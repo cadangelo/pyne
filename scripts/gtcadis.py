@@ -4,11 +4,13 @@ import ConfigParser
 from os.path import isfile
 
 import numpy as np
-from pyne.mesh import Mesh
+from pyne.mesh import Mesh, IMeshTag
 from pyne.partisn import write_partisn_input, isotropic_vol_source
-from pyne.dagmc import discretize_geom, load
+from pyne.dagmc import discretize_geom, load, cell_material_assignments
 from pyne import nucname
+from pyne.material import MaterialLibrary
 from pyne.bins import pointwise_collapse
+from pyne.alara import calc_T
 
 
 config_filename = 'config.ini'
@@ -41,6 +43,12 @@ src_vol:
 
 # Calculate T matrix for each material
 [step2]
+# Path to material laden geometry file
+geom_file:
+# Single pulse irradiation time
+irr_time:
+# Single decay time of interest
+decay_time: 
 
 # Calculate adjoint neutron source
 [step3]
@@ -154,6 +162,21 @@ def step1():
             }
     
     write_partisn_input(mesh, hdf5, ngroup, cards=cards, dg=dg, names_dict=names_dict, data_hdf5path="/materials", nuc_hdf5path="/nucid", fine_per_coarse=1)
+
+def step2():
+    config = ConfigParser.ConfigParser()
+    config.read(config_filename)
+
+    geom = config.get('step1', 'geom_file')
+    ml = MaterialLibrary(geom)
+    neutron_spectrum =  
+    irr_times = config.get('step2', 'irr_time')
+    flux_magnitudes =
+    decay_times = config.get('step2', 'decay_time')
+    
+
+    T = calc_T(mats, neutron_spectrum, irr_times, flux_magnitudes, decay_times, remove=True)
+np.set_printoptions(threshold=np.nan) 
 
 def main():
 
