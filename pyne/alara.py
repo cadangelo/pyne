@@ -843,3 +843,71 @@ def _get_subvoxel_array(mesh, cell_mats):
 
     return subvoxel_array
 
+def calc_T(mats, neutron_spectrum, irr_times, flux_magnitudes, decay_times, remove=True):
+    """
+    This function returns a T matrix for each material.
+    Parameters
+    ----------
+    mats : 
+        List of materials in the geometry.
+    neutron_spectrum : 
+        Neutron spectrum (number of energy groups).
+    irr_times : 
+        Irradiation history (list of pulse times).
+    flux_magnitudes : 
+        Magnitude of neutron flux in each energy group.
+    decay_times : 
+        Decay times of interest.
+    remove :
+        If true, remove 
+    return :
+        T matrix for each material listed.        
+
+    """
+    if not os.path.exists(run_dir):
+        os.makedirs(run_dir)
+    neutron_spectrum = _normalize(neutron_spectrum)
+    num_n_groups = len(neutron_spectrum)
+    #num_p_groups = 24
+    num_p_groups = 42
+    num_mats = len(mats)
+    num_decay_times = len(decay_times)
+    num_irr_times = len(irr_times)
+
+    # Write matlib file
+    matlib_file = os.path.join(run_dir, "matlib")
+    _write_matlib(mats, matlib_file)
+     
+    # Write fluxin file
+    fluxin_file = os.path.join(run_dir, "fluxin")
+    fluxes = []
+    for m in range(num_mats):
+        for n in range(num_n_groups):
+            fluxes.append([neutron_spectrum[n] if x == n else 0 for x in range(num_n_groups)])
+    _write_fluxin(fluxes, fluxin_file)
+    
+    # Write geom file
+    input_file = os.path.join(run_dir, "inp")
+    phtn_src_file = os.path.join(run_dir, "phtn_src")
+    _write_inp(mats, num_n_groups, flux_magnitudes, irr_times, decay_times,
+               input_file, matlib_file, fluxin_file, phtn_src_file)
+        
+    # Run ALARA
+    sub = subprocess.Popen(['alara', input_file], stderr=subprocess.STDOUT, stdout=subprocess.PIPE).communicate()[0]
+    T = np.zeros(shape=(num_mats, num_decay_times, num_n_groups, num_p_groups))
+
+    with open(phtn_src_file, 'r') as f:
+        i = 0
+        for line in f.readlines():
+            l = line.split()
+            if l[0] == "TOTAL" and l[1] != "shutdown":
+                m = int(np.floor(float(i)/(num_n_groups*num_decay_times)))
+                dt = i % num_decay_times
+                n = int(np.floor(i/float(num_decay_times))) % num_n_groups
+                # WHAT FLUX MAGNITUDE SHOULD I ACTUALLY DIVIDE BY???????????
+                T[m, dt, n, :] = [float(x)/(neutron_spectrum[n]*flux_magnitudes[0]) for x in l[3:]]
+                # print i, m, dt, n
+                i += 1
+    if remove:
+        shutil.rmtree(run_dir)
+    return T
