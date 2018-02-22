@@ -17,11 +17,11 @@ config_filename = 'config.ini'
 
 config = \
 """
-# Optional step to assess all materials in geometry for compatibility with 
-SNILB criteria
+## Optional step to assess all materials in geometry for compatibility with 
+# SNILB criteria
 [step0]
 
-# Prepare PARTISN input file for adjoint photon transport
+## Prepare PARTISN input file for adjoint photon transport
 [step1]
 # Path to hdf5 geometry file
 geom_file:
@@ -41,23 +41,23 @@ intensities:
 # Volume of source cell
 src_vol:
 
-# Calculate T matrix for each material
+## Calculate T matrix for each material
 [step2]
 # Path to material laden geometry file
-geom_file:
+# geom_file:
 # Single pulse irradiation time
 irr_time:
 # Single decay time of interest
 decay_time: 
 
-# Calculate adjoint neutron source
+## Calculate adjoint neutron source
 [step3]
 
-# Prepare PARTISN input for adjoint neutron transport
+## Prepare PARTISN input for adjoint neutron transport
 [step4]
 
-# Generate Monte Carlo variance reduction parameters 
-(biased source and weight windows)
+## Generate Monte Carlo variance reduction parameters 
+# (biased source and weight windows)
 [step5]
 
 
@@ -69,7 +69,7 @@ def setup():
     with open(config_filename, 'w') as f:
         f.write(config)
     print('File "{}" has been written'.format(config_filename))
-    print('Fill out the fields in these filse then run ">> gtcadis.py step1"')
+    print('Fill out the fields in these files then run ">> gtcadis.py step1"')
 
 def step1():
     config = ConfigParser.ConfigParser()
@@ -169,14 +169,16 @@ def step2():
 
     geom = config.get('step1', 'geom_file')
     ml = MaterialLibrary(geom)
-    neutron_spectrum =  
     irr_times = config.get('step2', 'irr_time')
-    flux_magnitudes =
     decay_times = config.get('step2', 'decay_time')
+    neutron_spectrum = [1]*175 # will be normalized
+    flux_magnitudes = [1.75E14] # 1E12*175
     
+    #mats = [ml['mat:m1/rho:7.930000E+00'], ml['mat:m2/rho:1.205000E-03']]
+    mats = list(ml.values())
 
     T = calc_T(mats, neutron_spectrum, irr_times, flux_magnitudes, decay_times, remove=True)
-np.set_printoptions(threshold=np.nan) 
+    np.set_printoptions(threshold=np.nan) 
 
 def main():
 
@@ -186,17 +188,21 @@ def main():
     setup_help = ('Prints the file "config.ini" to be\n'
                   'filled in by the user.\n')
     step1_help = 'Creates the PARTISN input file for adjoint photon transport.'
+    step2_help = 'Calculates the T matrix for each material in the geometry.'
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(help=gtcadis_help, dest='command')
 
     setup_parser = subparsers.add_parser('setup', help=setup_help)
     step1_parser = subparsers.add_parser('step1', help=step1_help)
+    step2_parser = subparsers.add_parser('step2', help=step1_help)
 
     args, other = parser.parse_known_args()
     if args.command == 'setup':
         setup()
     elif args.command == 'step1':
         step1()
+    elif args.command == 'step2':
+        step2()
 
 if __name__ == '__main__':
     main()
