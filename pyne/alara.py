@@ -1,6 +1,8 @@
 """This module contains functions relevant to the ALARA activation code and the Chebyshev Rational Approximation Method
 """
 from __future__ import print_function
+import subprocess
+import shutil
 import os
 import collections
 from warnings import warn
@@ -30,6 +32,8 @@ from pyne.nucname import serpent, alara, znum, anum
 from pyne.data import N_A, decay_const, decay_children, branch_ratio
 from pyne.xs.data_source import SimpleDataSource
 
+thisdir = os.path.dirname(__file__)
+run_dir = "run_dir"
 
 def mesh_to_fluxin(flux_mesh, flux_tag, fluxin="fluxin.out",
                    reverse=False, sub_voxel=False, cell_fracs=None,
@@ -910,6 +914,78 @@ def _find_phsrc_dc(idc, phtn_src_dc):
             if (abs(idc_s - dc_s)/dc_s) < 1e-6:
                 return phtn_src_dc[i]
         raise ValueError('Decay time {0} not found in phtn_src file'.format(idc)) 
+
+def _normalize(neutron_spectrum):
+    tol = 1E-8
+    total = float(np.sum(neutron_spectrum))
+    if abs(total - 1.0) > tol:
+        warn("Normalizing neutron spectrum")
+        neutron_spectrum = [x/total for x in neutron_spectrum]
+    return neutron_spectrum    
+
+def _write_matlib(mats, filename):
+    s = ""
+    for m, mat in enumerate(mats):
+        s += mat.alara()
+        s += "\n"
+    with open(filename, 'w') as f:
+        f.write(s)
+
+def _write_fluxin(fluxes, fluxin_file):
+    s = ""
+    for flux in fluxes:
+        for i, fl in enumerate(reversed(flux)):
+           s += "{0:.6E} ".format(fl)
+           if (i+1) % 6 ==0:
+               s += '\n'
+        s += '\n\n'
+    with open(fluxin_file, 'w') as f:
+        f.write(s)
+
+def _write_inp(mats, num_n_groups, flux_magnitudes, irr_times, decay_times,
+               input_file, matlib_file, fluxin_file, phtn_src_file):
+        num_zones = len(mats)*(num_n_groups)
+        s = "geometry rectangular\n\nvolume\n"
+        for z in range(num_zones):
+            s += "    1.0 zone_{0}\n".format(z)
+        s += 'end\n\nmat_loading\n'
+        for z in range(num_zones):
+            s += "    zone_{0} mix_{1}\n".format(z, int(np.floor(z/float(num_n_groups))))
+        s += 'end\n\n'
+        for m, mat in enumerate(mats):
+            s += "mixture mix_{0}\n".format(m)
+            s += "    material {0} 1 1\nend\n\n".format(mat.metadata["name"])
+        s += "material_lib {0}\n".format(matlib_file)
+        s += "element_lib {0}/data/nuclib\n".format(thisdir)
+        s += "data_library alaralib {}/data/fendl3bin\n".format(thisdir)
+        s += "truncation 1e-7\n"
+        s += "impurity 5e-6 1e-3\n"
+        s += "dump_file {0}\n".format(os.path.join(run_dir, "dump_file"))
+        for i, flux_magnitude in enumerate(flux_magnitudes):
+            s += "flux flux_{0} {1} {2} 0 default\n".format(i, fluxin_file, flux_magnitude)
+        s += "output zone\n"
+        s += "integrate_energy\n"
+        #s += "    photon_source {0}/data/fendl3bin {1} 24 1.00E4 2.00E4 5.00E4 1.00E5\n".format(thisdir, phtn_src_file)
+        #s += "    2.00E5 3.00E5 4.00E5 6.00E5 8.00E5 1.00E6 1.22E6 1.44E6 1.66E6\n"
+        #s += "    2.00E6 2.50E6 3.00E6 4.00E6 5.00E6 6.50E6 8.00E6 1.00E7 1.20E7\n"
+        #s += "    1.40E7 2.00E7\nend\n"
+        s += "    photon_source {0}/data/fendl3bin {1} 42\n".format(thisdir, phtn_src_file)
+        s +="     1e4 2e4 3e4 4.5e4 6e4 7e4 7.5e4 1e5 1.5e5 2e5 3e5 4e5\n"
+        s +="     4.5e5 5.1e5 5.12e5 6e5 7e5 8e5 1e6 1.33e6 1.34e6 1.5e6 1.66e6 2e6\n"
+        s +="     2.5e6 3e6 3.5e6 4e6 4.5e6 5e6 5.5e6 6e6 6.5e6 7e6 7.5e6 8e6 1e7\n"
+        s +="     1.2e7 1.4e7 2e7 3e7 5e7\nend\n"
+        s += "pulsehistory my_schedule\n"
+        s += "    1 0.0 s\nend\n"
+        s += "schedule total\n"
+        for i, irr_time in enumerate(irr_times):
+            s += "    {0} s flux_{1} my_schedule 0 s\n".format(irr_time, i)
+        s += "end\n"
+        s += "cooling\n"
+        for d in decay_times:
+            s += "    {0} s\n".format(d)
+        s += "end\n"
+        with open(input_file, 'w') as f:
+            f.write(s)
 
 def calc_T(mats, neutron_spectrum, irr_times, flux_magnitudes, decay_times, remove=True):
     """
