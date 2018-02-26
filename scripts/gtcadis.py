@@ -4,7 +4,7 @@ import ConfigParser
 from os.path import isfile
 
 import numpy as np
-from pyne.mesh import Mesh
+from pyne.mesh import Mesh, IMeshTag
 from pyne.partisn import write_partisn_input, isotropic_vol_source
 from pyne.dagmc import discretize_geom, load
 from pyne import nucname
@@ -51,6 +51,8 @@ src_vol:
 # Generate Monte Carlo variance reduction parameters 
 (biased source and weight windows)
 [step5]
+Path to adjoint neutron flux file.
+adj_nflux_file:
 
 
 """
@@ -63,97 +65,66 @@ def setup():
     print('File "{}" has been written'.format(config_filename))
     print('Fill out the fields in these filse then run ">> gtcadis.py step1"')
 
-def step1():
-    config = ConfigParser.ConfigParser()
-    config.read(config_filename)
+def step5():
 
-    hdf5 = config.get('step1', 'geom_file') 
-    cells = [config.get('step1', 'src_cell')]
-    print ('cells', len(cells))
-    xmesh = config.get('step1', 'xmesh').split(',')
-    ymesh = config.get('step1', 'ymesh').split(',')
-    zmesh = config.get('step1', 'zmesh').split(',')
-    #intensities = [config.get('step1', 'intensities')]
-    #print (len(intensities))
-    src_vol = [config.getfloat('step1', 'src_vol')]
-    print ('src vol', len(src_vol))
+    adj_flux_mesh = Mesh(structured=True, mesh=config.get('step5', 'adj_nflux_file'))
+    adj_flux_mesh.flux = IMeshTag(217, float)
+    adj_flux_mesh.flux2 = IMeshTag(175, float)
     
-    names = ['h1', 'd', 'h3', 'he3', 'he4', 'li6', 'li7', 'be9', 'b10', 'b11',
-    'c12', 'n14', 'n15', 'o16', 'f19', 'na23', 'mgnat', 'al27', 'si28', 'si29',
-    'si30', 'p31', 'snat', 'cl35', 'cl37', 'knat', 'canat', 'ti46', 'ti47', 'ti48',
-    'ti49', 'ti50', 'vnat', 'cr50', 'cr52', 'cr53', 'cr54', 'mn55', 'fe54', 'fe56',
-    'fe57', 'fe58', 'co59', 'ni58', 'ni60', 'ni61', 'ni62', 'ni64', 'cu63', 'cu65',
-    'ganat', 'zrnat', 'nb93', 'mo92', 'mo94', 'mo95', 'mo96', 'mo97', 'mo98',
-    'mo100', 'snnat', 'ta181', 'w182', 'w183', 'w184', 'w186', 'au197', 'pb206',
-    'pb207', 'pb208', 'bi209']
+    a = adj_flux_mesh.flux[:]
+    adj_flux_mesh.flux2[:] = a[:,42:]
+    adj_flux_mesh.mesh.save("adj_flux_mesh.h5m")
+
+    adj_flux_mesh = Mesh(structured=True, mesh="adj_flux_mesh.h5m")
+    adj_flux_tag = "flux2"
     
-    names_formatted = ['h1', 'h2', 'h3', 'he3', 'he4', 'li6', 'li7', 'be9', 'b10', 'b11',
-    'c12', 'n14', 'n15', 'o16', 'f19', 'na23', 'mg', 'al27', 'si28', 'si29',
-    'si30', 'p31', 's', 'cl35', 'cl37', 'k', 'ca', 'ti46', 'ti47', 'ti48',
-    'ti49', 'ti50', 'v', 'cr50', 'cr52', 'cr53', 'cr54', 'mn55', 'fe54', 'fe56',
-    'fe57', 'fe58', 'co59', 'ni58', 'ni60', 'ni61', 'ni62', 'ni64', 'cu63', 'cu65',
-    'ga', 'zr', 'nb93', 'mo92', 'mo94', 'mo95', 'mo96', 'mo97', 'mo98',
-    'mo100', 'sn', 'ta181', 'w182', 'w183', 'w184', 'w186', 'au197', 'pb206',
-    'pb207', 'pb208', 'bi209']
+    q_mesh = Mesh(structured=True, mesh="../../src/n_linear_src_mc.h5m")
+    q_tag = "source_density"
     
-    names_dict = {nucname.id(x):y for x, y in zip(names_formatted, names)}
+    q_bias_mesh = q_mesh
+    q_bias_tag= "biased_source_density"
     
-    sc = [np.linspace(float(xmesh[0]), float(xmesh[1]), float(xmesh[2])),
-          np.linspace(float(ymesh[0]), float(ymesh[1]), float(ymesh[2])),
-          np.linspace(float(zmesh[0]), float(zmesh[1]), float(zmesh[2]))]
+    ww_mesh = adj_flux_mesh
+    ww_tag = "ww_n"
     
-    mesh = Mesh(structured=True, structured_coords=sc)
-    #hdf5 = "../../geom/photon/photon.h5m"
+    cadis(adj_flux_mesh, adj_flux_tag, q_mesh, q_tag,
+              ww_mesh, ww_tag, q_bias_mesh, q_bias_tag, beta=5)
     
-    # the first bin has been replaced with 1 for log int.
-    photon_bins =  [1, 1e4, 2e4, 3e4, 4.5e4, 6e4, 7e4, 7.5e4, 1e5, 1.5e5, 2e5, 3e5, 4e5,
-                    4.5e5, 5.1e5, 5.12e5, 6e5, 7e5, 8e5, 1e6, 1.33e6, 1.34e6, 1.5e6, 1.66e6, 2e6,
-                    2.5e6, 3e6, 3.5e6, 4e6, 4.5e6, 5e6, 5.5e6, 6e6, 6.5e6, 7e6, 7.5e6, 8e6, 1e7,
-                    1.2e7, 1.4e7, 2e7, 3e7, 5e7]
-    # convert to MEV
-    photon_bins = np.array([x/1E6 for x in photon_bins])
-    de = np.array([0.01, 0.015, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.1, 0.15, 0.2, 0.3,
-                   0.4, 0.5, 0.6, 0.8, 1, 2, 4, 6, 8, 10])
-    df = np.array([0.0485, 0.1254, 0.205, 0.2999, 0.3381, 0.3572, 0.378, 0.4066, 0.4399, 0.5172,
-                   0.7523, 1.0041, 1.5083, 1.9958, 2.4657, 2.9082, 3.7269, 4.4834, 7.4896,
-                   12.0153, 15.9873, 19.9191, 23.76])
-    # convert to Sv/s per photon FLUX (not fluence)
-    df = np.array([x*1E-12 for x in df])
-    photon_spectrum = pointwise_collapse(photon_bins, de, df, logx=True, logy=True)
-    # anything below 0.01 MeV should be assigned the DF value of 0.01 MeV
-    photon_spectrum[0] = df[0]
-    spectra = [np.append(photon_spectrum, np.zeros(175))]
-    print('spectra', len(spectra))
-    # The spectrum is normalized by PyNE, so we need to mutliply by the sum of intensities in the spectrum.
-    # Additionally, we divide by the volume of the source cell in order to get source density.
-    intensities = [np.sum(spectra)/src_vol]
+    particle = 'n'
+    tag_e_bounds = \
+        ww_mesh.mesh.createTag('{0}_e_upper_bounds'.format(particle),
+                                175, float)
     
-    load(hdf5)
-    source, dg = isotropic_vol_source(hdf5, mesh, cells, spectra, intensities)
+    tag_e_bounds[ww_mesh.mesh.rootSet] = [1.00E-07, 4.14E-07, 5.32E-07, 6.83E-07,
+    8.76E-07, 1.13E-06, 1.44E-06, 1.86E-06, 2.38E-06, 3.06E-06, 3.93E-06, 5.04E-06,
+    6.48E-06, 8.32E-06, 1.07E-05, 1.37E-05, 1.76E-05, 2.26E-05, 2.90E-05, 3.73E-05,
+    4.79E-05, 6.14E-05, 7.89E-05, 1.01E-04, 1.30E-04, 1.67E-04, 2.14E-04, 2.75E-04,
+    3.54E-04, 4.54E-04, 5.83E-04, 7.49E-04, 9.61E-04, 1.23E-03, 1.58E-03, 2.03E-03,
+    2.25E-03, 2.49E-03, 2.61E-03, 2.75E-03, 3.04E-03, 3.35E-03, 3.71E-03, 4.31E-03,
+    5.53E-03, 7.10E-03, 9.12E-03, 1.06E-02, 1.17E-02, 1.50E-02, 1.93E-02, 2.19E-02,
+    2.36E-02, 2.42E-02, 2.48E-02, 2.61E-02, 2.70E-02, 2.85E-02, 3.18E-02, 3.43E-02,
+    4.09E-02, 4.63E-02, 5.25E-02, 5.66E-02, 6.74E-02, 7.20E-02, 7.95E-02, 8.25E-02,
+    8.65E-02, 9.80E-02, 1.11E-01, 1.17E-01, 1.23E-01, 1.29E-01, 1.36E-01, 1.43E-01,
+    1.50E-01, 1.58E-01, 1.66E-01, 1.74E-01, 1.83E-01, 1.93E-01, 2.02E-01, 2.13E-01,
+    2.24E-01, 2.35E-01, 2.47E-01, 2.73E-01, 2.87E-01, 2.95E-01, 2.97E-01, 2.98E-01,
+    3.02E-01, 3.34E-01, 3.69E-01, 3.88E-01, 4.08E-01, 4.50E-01, 4.98E-01, 5.23E-01,
+    5.50E-01, 5.78E-01, 6.08E-01, 6.39E-01, 6.72E-01, 7.07E-01, 7.43E-01, 7.81E-01,
+    8.21E-01, 8.63E-01, 9.07E-01, 9.62E-01, 1.00E+00, 1.11E+00, 1.16E+00, 1.22E+00,
+    1.29E+00, 1.35E+00, 1.42E+00, 1.50E+00, 1.57E+00, 1.65E+00, 1.74E+00, 1.83E+00,
+    1.92E+00, 2.02E+00, 2.12E+00, 2.23E+00, 2.31E+00, 2.35E+00, 2.37E+00, 2.39E+00,
+    2.47E+00, 2.59E+00, 2.73E+00, 2.87E+00, 3.01E+00, 3.17E+00, 3.33E+00, 3.68E+00,
+    4.07E+00, 4.49E+00, 4.72E+00, 4.97E+00, 5.22E+00, 5.49E+00, 5.77E+00, 6.07E+00,
+    6.38E+00, 6.59E+00, 6.70E+00, 7.05E+00, 7.41E+00, 7.79E+00, 8.19E+00, 8.61E+00,
+    9.05E+00, 9.51E+00, 1.00E+01, 1.05E+01, 1.11E+01, 1.16E+01, 1.22E+01, 1.25E+01,
+    1.28E+01, 1.35E+01, 1.38E+01, 1.42E+01, 1.46E+01, 1.49E+01, 1.57E+01, 1.65E+01,
+    1.69E+01, 1.73E+01, 1.96E+01]
     
-    ngroup = 217
-    cards = {"block1": {"isn": 16,
-                        "maxscm": '3E8',
-                        "maxlcm": '6E8',
-                       },
-             "block3": {"lib": "xsf21-71", # name of cross section library
-                       "lng":175,
-                       "maxord": 5,
-                       "ihm": 227,
-                       "iht": 10,
-                       "ihs": 11,
-                       "ifido": 1,
-                       "ititl": 1,
-                       "i2lp1": 0,
-                       "savbxs": 0,
-                       "kwikrd": 0
-                       },
-            "block5": {"source": source,
-                       "ith":1,
-                       "isct":5}
-            }
+    wwinp = Wwinp()
+    wwinp.read_mesh(ww_mesh.mesh)
     
-    write_partisn_input(mesh, hdf5, ngroup, cards=cards, dg=dg, names_dict=names_dict, data_hdf5path="/materials", nuc_hdf5path="/nucid", fine_per_coarse=1)
+    wwinp.mesh.save("wwinp.h5m")
+    q_mesh.mesh.save("biased_source.h5m")
+    wwinp.write_wwinp("wwinp.out")
 
 def main():
 
