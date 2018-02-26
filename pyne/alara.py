@@ -32,7 +32,7 @@ from pyne.nucname import serpent, alara, znum, anum
 from pyne.data import N_A, decay_const, decay_children, branch_ratio
 from pyne.xs.data_source import SimpleDataSource
 
-thisdir = os.path.dirname(__file__)
+#thisdir = os.path.dirname(__file__)
 run_dir = "run_dir"
 
 def mesh_to_fluxin(flux_mesh, flux_tag, fluxin="fluxin.out",
@@ -874,7 +874,7 @@ def _write_fluxin(fluxes, fluxin_file):
     with open(fluxin_file, 'w') as f:
         f.write(s)
 
-def _write_inp(mats, num_n_groups, flux_magnitudes, irr_times, decay_times,
+def _write_inp(alara_dir, mats, num_n_groups, flux_magnitudes, irr_times, decay_times,
                input_file, matlib_file, fluxin_file, phtn_src_file):
         num_zones = len(mats)*(num_n_groups)
         s = "geometry rectangular\n\nvolume\n"
@@ -888,8 +888,10 @@ def _write_inp(mats, num_n_groups, flux_magnitudes, irr_times, decay_times,
             s += "mixture mix_{0}\n".format(m)
             s += "    material {0} 1 1\nend\n\n".format(mat.metadata["name"])
         s += "material_lib {0}\n".format(matlib_file)
-        s += "element_lib {0}/data/nuclib\n".format(thisdir)
-        s += "data_library alaralib {}/data/fendl3bin\n".format(thisdir)
+        #s += "element_lib {0}/data/nuclib\n".format(thisdir)
+        s += "element_lib {0}/data/nuclib\n".format(alara_dir)
+        #s += "data_library alaralib {}/data/fendl2.0bin\n".format(thisdir)
+        s += "data_library alaralib {0}/data/fendl2.0bin\n".format(alara_dir)
         s += "truncation 1e-7\n"
         s += "impurity 5e-6 1e-3\n"
         s += "dump_file {0}\n".format(os.path.join(run_dir, "dump_file"))
@@ -897,11 +899,12 @@ def _write_inp(mats, num_n_groups, flux_magnitudes, irr_times, decay_times,
             s += "flux flux_{0} {1} {2} 0 default\n".format(i, fluxin_file, flux_magnitude)
         s += "output zone\n"
         s += "integrate_energy\n"
-        #s += "    photon_source {0}/data/fendl3bin {1} 24 1.00E4 2.00E4 5.00E4 1.00E5\n".format(thisdir, phtn_src_file)
+        #s += "    photon_source {0}/data/fendl2.0bin {1} 24 1.00E4 2.00E4 5.00E4 1.00E5\n".format(thisdir, phtn_src_file)
         #s += "    2.00E5 3.00E5 4.00E5 6.00E5 8.00E5 1.00E6 1.22E6 1.44E6 1.66E6\n"
         #s += "    2.00E6 2.50E6 3.00E6 4.00E6 5.00E6 6.50E6 8.00E6 1.00E7 1.20E7\n"
         #s += "    1.40E7 2.00E7\nend\n"
-        s += "    photon_source {0}/data/fendl3bin {1} 42\n".format(thisdir, phtn_src_file)
+        #s += "    photon_source {0}/data/fendl2.0bin {1} 42\n".format(thisdir, phtn_src_file)
+        s += "    photon_source {0}/data/fendl2.0bin {1} 42\n".format(alara_dir, phtn_src_file)
         s +="     1e4 2e4 3e4 4.5e4 6e4 7e4 7.5e4 1e5 1.5e5 2e5 3e5 4e5\n"
         s +="     4.5e5 5.1e5 5.12e5 6e5 7e5 8e5 1e6 1.33e6 1.34e6 1.5e6 1.66e6 2e6\n"
         s +="     2.5e6 3e6 3.5e6 4e6 4.5e6 5e6 5.5e6 6e6 6.5e6 7e6 7.5e6 8e6 1e7\n"
@@ -919,11 +922,12 @@ def _write_inp(mats, num_n_groups, flux_magnitudes, irr_times, decay_times,
         with open(input_file, 'w') as f:
             f.write(s)
 
-def calc_T(mats, neutron_spectrum, irr_times, flux_magnitudes, decay_times, remove=True):
+def calc_T(alara_dir, mats, neutron_spectrum, irr_times, flux_magnitudes, decay_times, remove=True):
     """
     This function returns a T matrix for each material.
     Parameters
     ----------
+    alara_dir :
     mats : 
         List of materials in the geometry.
     neutron_spectrum : 
@@ -965,7 +969,7 @@ def calc_T(mats, neutron_spectrum, irr_times, flux_magnitudes, decay_times, remo
     # Write geom file
     input_file = os.path.join(run_dir, "inp")
     phtn_src_file = os.path.join(run_dir, "phtn_src")
-    _write_inp(mats, num_n_groups, flux_magnitudes, irr_times, decay_times,
+    _write_inp(alara_dir, mats, num_n_groups, flux_magnitudes, irr_times, decay_times,
                input_file, matlib_file, fluxin_file, phtn_src_file)
         
     # Run ALARA
