@@ -888,9 +888,7 @@ def _write_inp(alara_dir, mats, num_n_groups, flux_magnitudes, irr_times, decay_
             s += "mixture mix_{0}\n".format(m)
             s += "    material {0} 1 1\nend\n\n".format(mat.metadata["name"])
         s += "material_lib {0}\n".format(matlib_file)
-        #s += "element_lib {0}/data/nuclib\n".format(thisdir)
         s += "element_lib {0}/data/nuclib\n".format(alara_dir)
-        #s += "data_library alaralib {}/data/fendl2.0bin\n".format(thisdir)
         s += "data_library alaralib {0}/data/fendl2.0bin\n".format(alara_dir)
         s += "truncation 1e-7\n"
         s += "impurity 5e-6 1e-3\n"
@@ -984,9 +982,7 @@ def calc_T(alara_dir, mats, neutron_spectrum, irr_times, flux_magnitudes, decay_
                 m = int(np.floor(float(i)/(num_n_groups*num_decay_times)))
                 dt = i % num_decay_times
                 n = int(np.floor(i/float(num_decay_times))) % num_n_groups
-                # WHAT FLUX MAGNITUDE SHOULD I ACTUALLY DIVIDE BY???????????
                 T[m, dt, n, :] = [float(x)/(neutron_spectrum[n]*flux_magnitudes[0]) for x in l[3:]]
-                # print i, m, dt, n
                 i += 1
     if remove:
         shutil.rmtree(run_dir)
