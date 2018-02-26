@@ -43,8 +43,8 @@ src_vol:
 
 ## Calculate T matrix for each material
 [step2]
-# Path to material laden geometry file
-# geom_file:
+# Path to ALARA
+alara_dir: 
 # Single pulse irradiation time
 irr_time:
 # Single decay time of interest
@@ -168,6 +168,7 @@ def step2():
     config.read(config_filename)
 
     geom = config.get('step1', 'geom_file')
+    alara_dir = config.get('step2', 'alara_dir')
     ml = MaterialLibrary(geom)
     irr_times = config.get('step2', 'irr_time')
     decay_times = config.get('step2', 'decay_time')
@@ -177,7 +178,7 @@ def step2():
     #mats = [ml['mat:m1/rho:7.930000E+00'], ml['mat:m2/rho:1.205000E-03']]
     mats = list(ml.values())
 
-    T = calc_T(mats, neutron_spectrum, irr_times, flux_magnitudes, decay_times, remove=True)
+    T = calc_T(alara_dir, mats, neutron_spectrum, irr_times, flux_magnitudes, decay_times, remove=True)
     np.set_printoptions(threshold=np.nan) 
 
 def main():
