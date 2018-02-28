@@ -73,7 +73,7 @@ def _names_dict():
 
     return names_dict
  
-def _cards():
+def _cards(source):
     cards = {"block1": {"isn": 16,
                         "maxscm": '3E8',
                         "maxlcm": '6E8',
@@ -114,7 +114,7 @@ def step4():
 
     ngroup = 217
 
-    cards = _cards()
+    cards = _cards(source)
 
     write_partisn_input(mesh, geom, ngroup, cards=cards, names_dict=names_dict, data_hdf5path="/materials", nuc_hdf5path="/nucid", fine_per_coarse=1)
 
