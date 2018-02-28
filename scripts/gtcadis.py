@@ -13,6 +13,7 @@ from pyne.bins import pointwise_collapse
 from pyne.alara import calc_T
 
 
+
 config_filename = 'config.ini'
 
 config = \
@@ -26,11 +27,11 @@ config = \
 
 ## Calculate T matrix for each material
 [step2]
-# Path to hdf5 geometry file 
-# (same as given in step 1, if running step 1)
+# Path to hdf5 geometry file for adjoint neutron transport 
 geom_file: 
-# Path to ALARA
-alara_dir: 
+# Path to processed nuclear data 
+# (directory containing nuclib, fendl2.0bin.lib, fendl2.0bin.gam)
+data_dir: 
 # Single pulse irradiation time
 irr_time:
 # Single decay time of interest
@@ -55,7 +56,7 @@ def setup():
     with open(config_filename, 'w') as f:
         f.write(config)
     print('File "{}" has been written'.format(config_filename))
-    print('Fill out the fields in these files then run ">> gtcadis.py step1"')
+    print('Fill out the fields in this file then run ">> gtcadis.py step1"')
 
 def step2():
     config = ConfigParser.ConfigParser()
@@ -63,21 +64,26 @@ def step2():
 
     # Get user input from config file
     geom = config.get('step2', 'geom_file')
-    alara_dir = config.get('step2', 'alara_dir')
+    data_dir = config.get('step2', 'data_dir')
     irr_times = [config.getfloat('step2', 'irr_time')]
     decay_times = [config.getfloat('step2', 'decay_time')]
 
-    # For a flat, 175 group neutron spectrum
+    # For a flat, 175 group neutron spectrum, magnitude 1E12
     neutron_spectrum = [1]*175 # will be normalized
     flux_magnitudes = [1.75E14] # 1E12*175
     
     # Get materials from geometry file
     ml = MaterialLibrary(geom)
     mats = list(ml.values())
+    print 'type mat list', type(ml.values[0])
 
-    T = calc_T(alara_dir, mats, neutron_spectrum, irr_times, flux_magnitudes, decay_times, remove=True)
+    # Calculate T
+    T = calc_T(data_dir, mats, neutron_spectrum, irr_times, flux_magnitudes, decay_times, remove=True)
     np.set_printoptions(threshold=np.nan)
-    # save numpy array to be loaded by step 3 
+    # Save numpy array that will be loaded by step 3
+    np.save('tempT.npy', T)
+    print 'T, datadir, mats, nspec, irr, fmag, dt, remove', type(T), type(data_dir), type(mats)
+    print type(neutron_spectrum), type(irr_times), type(flux_magnitudes), type(decay_times)
 
 def main():
 
