@@ -921,7 +921,6 @@ def _normalize(neutron_spectrum):
         neutron_spectrum = [x / total for x in neutron_spectrum]
     return neutron_spectrum
 
-
 def _write_matlib(mats, filename):
     s = ""
     for m, mat in enumerate(mats):
@@ -929,7 +928,6 @@ def _write_matlib(mats, filename):
         s += "\n"
     with open(filename, 'w') as f:
         f.write(s)
-
 
 def _write_fluxin(fluxes, fluxin_file):
     s = ""
