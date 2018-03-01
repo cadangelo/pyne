@@ -63,31 +63,49 @@ def setup():
     with open(config_filename, 'w') as f:
         f.write(config)
     print('File "{}" has been written'.format(config_filename))
-    print('Fill out the fields in these filse then run ">> gtcadis.py step1"')
+    print('Fill out the fields in this file then run ">> gtcadis.py step1"')
 
 def step5():
+    # Parse config file
+    config = ConfigParser.ConfigParser()
+    config.read(config_filename)
+    #atflux = config.get('step5', 'atflux')    
+    q_mesh = Mesh(structured=True, mesh=config.get('step5', 'q_mesh'))
 
-    adj_flux_mesh = Mesh(structured=True, mesh=config.get('step5', 'adj_nflux_file'))
-    adj_flux_mesh.flux = IMeshTag(217, float)
-    adj_flux_mesh.flux2 = IMeshTag(175, float)
-    
-    a = adj_flux_mesh.flux[:]
-    adj_flux_mesh.flux2[:] = a[:,42:]
-    adj_flux_mesh.mesh.save("adj_flux_mesh.h5m")
 
-    adj_flux_mesh = Mesh(structured=True, mesh="adj_flux_mesh.h5m")
-    adj_flux_tag = "flux2"
+    # Map atflux values to structured mesh 
+    os.system('cp blank_mesh.h5m adj_n_mesh.h5m')
+    m = Mesh(structured=True, mesh='adj_n_mesh.h5m')
+    at = Atflux("atflux")
+    at.to_mesh(m, "flux")
+    adj_flux_tag = "flux"
+
+#    adj_flux_mesh = Mesh(structured=True, mesh=config.get('step5', 'adj_nflux_file'))
+#    adj_flux_mesh.flux = IMeshTag(217, float)
+#    adj_flux_mesh.flux2 = IMeshTag(175, float)
+#    
+#    a = adj_flux_mesh.flux[:]
+#    adj_flux_mesh.flux2[:] = a[:,42:]
+#    adj_flux_mesh.mesh.save("adj_flux_mesh.h5m")
+#
+#
+#
+#
+#    adj_flux_mesh = Mesh(structured=True, mesh="adj_flux_mesh.h5m")
+#    adj_flux_tag = "flux2"
     
-    q_mesh = Mesh(structured=True, mesh="../../src/n_linear_src_mc.h5m")
+
+    # Create source mesh tags
+    #q_mesh = Mesh(structured=True, mesh="../../src/n_linear_src_mc.h5m")
     q_tag = "source_density"
-    
     q_bias_mesh = q_mesh
     q_bias_tag= "biased_source_density"
-    
-    ww_mesh = adj_flux_mesh
+    # Create weight window tag
+    ww_mesh = m
     ww_tag = "ww_n"
     
-    cadis(adj_flux_mesh, adj_flux_tag, q_mesh, q_tag,
+    # Use CADIS to generate biased source 
+    cadis(m, adj_flux_tag, q_mesh, q_tag,
               ww_mesh, ww_tag, q_bias_mesh, q_bias_tag, beta=5)
     
     particle = 'n'
