@@ -75,15 +75,12 @@ def step2():
     # Get materials from geometry file
     ml = MaterialLibrary(geom)
     mats = list(ml.values())
-    print 'type mat list', type(ml.values[0])
 
     # Calculate T
     T = calc_T(data_dir, mats, neutron_spectrum, irr_times, flux_magnitudes, decay_times, remove=True)
     np.set_printoptions(threshold=np.nan)
     # Save numpy array that will be loaded by step 3
     np.save('tempT.npy', T)
-    print 'T, datadir, mats, nspec, irr, fmag, dt, remove', type(T), type(data_dir), type(mats)
-    print type(neutron_spectrum), type(irr_times), type(flux_magnitudes), type(decay_times)
 
 def main():
 
