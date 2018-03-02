@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import argparse
 import ConfigParser
-from os.path import isfile
+import os
 
 import numpy as np
 from pyne.mesh import Mesh, IMeshTag
@@ -49,11 +49,12 @@ src_vol:
 [step4]
 
 # Generate Monte Carlo variance reduction parameters 
-(biased source and weight windows)
+# (biased source and weight windows)
 [step5]
-Path to adjoint neutron flux file.
-adj_nflux_file:
-
+# Path to adjoint neutron flux file.
+atflux:
+# Path to unbiased neutron source mesh file.
+q_mesh:
 
 """
 
@@ -69,14 +70,14 @@ def step5():
     # Parse config file
     config = ConfigParser.ConfigParser()
     config.read(config_filename)
-    #atflux = config.get('step5', 'atflux')    
+    atflux = config.get('step5', 'atflux')    
     q_mesh = Mesh(structured=True, mesh=config.get('step5', 'q_mesh'))
 
 
     # Map atflux values to structured mesh 
     os.system('cp blank_mesh.h5m adj_n_mesh.h5m')
     m = Mesh(structured=True, mesh='adj_n_mesh.h5m')
-    at = Atflux("atflux")
+    at = Atflux(atflux)
     at.to_mesh(m, "flux")
     adj_flux_tag = "flux"
 
@@ -151,18 +152,18 @@ def main():
                     'neutron transport step of the Rigorous 2-Step (R2S) method.\n')
     setup_help = ('Prints the file "config.ini" to be\n'
                   'filled in by the user.\n')
-    step1_help = 'Creates the PARTISN input file for adjoint photon transport.'
+    step5_help = 'Creates the weight windows and biased source.'
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(help=gtcadis_help, dest='command')
 
     setup_parser = subparsers.add_parser('setup', help=setup_help)
-    step1_parser = subparsers.add_parser('step1', help=step1_help)
+    step5_parser = subparsers.add_parser('step5', help=step5_help)
 
     args, other = parser.parse_known_args()
     if args.command == 'setup':
         setup()
-    elif args.command == 'step1':
-        step1()
+    elif args.command == 'step5':
+        step5()
 
 if __name__ == '__main__':
     main()
