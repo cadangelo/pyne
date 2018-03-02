@@ -9,6 +9,9 @@ from pyne.partisn import write_partisn_input, isotropic_vol_source
 from pyne.dagmc import discretize_geom, load
 from pyne import nucname
 from pyne.bins import pointwise_collapse
+from pyne.cccc import Atflux
+from pyne.variancereduction import cadis
+from pyne.mcnp import Wwinp
 
 
 config_filename = 'config.ini'
@@ -16,7 +19,7 @@ config_filename = 'config.ini'
 config = \
 """
 # Optional step to assess all materials in geometry for compatibility with 
-SNILB criteria
+# SNILB criteria
 [step0]
 
 # Prepare PARTISN input file for adjoint photon transport
@@ -76,37 +79,27 @@ def step5():
 
     # Map atflux values to structured mesh 
     os.system('cp blank_mesh.h5m adj_n_mesh.h5m')
-    m = Mesh(structured=True, mesh='adj_n_mesh.h5m')
+    adj_flux_mesh = Mesh(structured=True, mesh='adj_n_mesh.h5m')
     at = Atflux(atflux)
-    at.to_mesh(m, "flux")
-    adj_flux_tag = "flux"
+    at.to_mesh(adj_flux_mesh, "flux")
 
-#    adj_flux_mesh = Mesh(structured=True, mesh=config.get('step5', 'adj_nflux_file'))
-#    adj_flux_mesh.flux = IMeshTag(217, float)
-#    adj_flux_mesh.flux2 = IMeshTag(175, float)
-#    
-#    a = adj_flux_mesh.flux[:]
-#    adj_flux_mesh.flux2[:] = a[:,42:]
-#    adj_flux_mesh.mesh.save("adj_flux_mesh.h5m")
-#
-#
-#
-#
-#    adj_flux_mesh = Mesh(structured=True, mesh="adj_flux_mesh.h5m")
-#    adj_flux_tag = "flux2"
-    
+    adj_flux_mesh.flux = IMeshTag(217, float)
+    adj_flux_mesh.flux2 = IMeshTag(175, float)
+
+    a = adj_flux_mesh.flux[:]
+    adj_flux_mesh.flux2[:] = a[:,42:]
+    adj_flux_tag = "flux2"
 
     # Create source mesh tags
-    #q_mesh = Mesh(structured=True, mesh="../../src/n_linear_src_mc.h5m")
     q_tag = "source_density"
     q_bias_mesh = q_mesh
     q_bias_tag= "biased_source_density"
     # Create weight window tag
-    ww_mesh = m
+    ww_mesh = adj_flux_mesh
     ww_tag = "ww_n"
     
     # Use CADIS to generate biased source 
-    cadis(m, adj_flux_tag, q_mesh, q_tag,
+    cadis(adj_flux_mesh, adj_flux_tag, q_mesh, q_tag,
               ww_mesh, ww_tag, q_bias_mesh, q_bias_tag, beta=5)
     
     particle = 'n'
