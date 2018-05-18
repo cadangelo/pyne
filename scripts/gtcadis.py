@@ -6,11 +6,12 @@ import os
 
 import numpy as np
 from pyne.mesh import Mesh, IMeshTag
-from pyne.partisn import write_partisn_input, isotropic_vol_source
+from pyne.partisn import write_partisn_input, isotropic_vol_source, mesh_to_isotropic_source
 from pyne.dagmc import discretize_geom, load, cell_material_assignments
 from pyne import nucname
 from pyne.bins import pointwise_collapse
 from pyne.cccc import Atflux
+from pyne.material import MaterialLibrary
 
 
 config_filename = 'config.yml'
@@ -282,6 +283,34 @@ def step3(cfg2, cfg3):
                         temp[i, g + p_groups] += adj_p[i, h]*T[mat, t, g, h]
         m.adj_n_src[:] = temp
         m.mesh.save("adj_n_src{0}.h5m".format(decay_times[t]))
+   # mesh = Mesh(structured=True, mesh="adj_n_src_1e5.h5m")
+   # source = mesh_to_isotropic_source(mesh, "adj_n_src")
+    source = mesh_to_isotropic_source(m, "adj_n_src")
+    ngroup = 217
+    cards = {"block1": {"isn": 16,
+                        "maxscm": '3E8',       
+                        "maxlcm": '6E8',      
+                       },
+             "block3": {"lib": "xsf21-71",
+                       "lng":175,
+                       "maxord": 5,
+                       "ihm": 227,
+                       "iht": 10,
+                       "ihs": 11,
+                       "ifido": 1,
+                       "ititl": 1,
+                       "i2lp1": 0,
+                       "savbxs": 0,
+                       "kwikrd": 0
+                       },
+            "block5": {"source": source, 
+                       "ith":1,
+                       "isct":5}
+            }
+        
+    names_dict = _names_dict()  # dictionary of isotopes (PyNE nucids to bxslib names)
+    write_partisn_input(m, geom, ngroup, cards=cards, names_dict=names_dict, data_hdf5path="/materials", nuc_hdf5path="/nucid", fine_per_coarse=1)
+        
 
 
 def main():
