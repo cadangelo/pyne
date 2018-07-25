@@ -16,6 +16,7 @@ from pyne.dagmc import discretize_geom, load, cell_material_assignments
 from pyne.alara import calc_eta, calc_T
 from pyne.cccc import Atflux
 
+
 config_filename = 'config.yml'
 
 config = \
@@ -27,7 +28,7 @@ general:
     # Number of photon energy groups (24 or 42), default is 42.
     p_groups: 42
     # Number of neutron energy groups. Default is 175.
-    n_groups: 175 
+    n_groups: 175
 
 # Optional step to assess all materials in geometry for compatibility with
 # SNILB criteria.
@@ -66,8 +67,8 @@ step2:
     data_dir: 
     # Single pulse irradiation time [s].
     irr_time: 
-    # Single decay time of interest [s].
-    decay_time: 
+    # Decay times of interest [s].
+    decay_times: 
 
 # Calculate adjoint neutron source
 step3:
@@ -97,8 +98,7 @@ def setup():
     with open(config_filename, 'w') as f:
         f.write(config)
     print('File "{}" has been written'.format(config_filename))
-    print('Fill out the fields in this file then run ">> gtcadis.py step1 \n'
-           'or optional step0, first"')
+    print('Fill out the fields in this file then run ">> gtcadis.py step1" or optional step0, first')
 
 def _names_dict():
     names = {'h1': 'h1', 'h2': 'd', 'h3': 'h3', 'he3': 'he3',
@@ -199,54 +199,71 @@ def step0(cfg, cfg2):
     num_p_groups = cfg['p_groups']
     geom = cfg2['n_geom_file']
     data_dir = cfg2['data_dir']
-    irr_times = str(cfg2['irr_time']).split(' ')
-    decay_times = str(cfg2['decay_time']).split(' ')
+    irr_time = cfg2['irr_time']
+    decay_times = str(cfg2['decay_times']).split(' ')
     
-    # Define a flat, 175 group, neutron spectrum with magnitude 1E12 [n/cm^2.s]
+    # Define a flat, 175 group, neutron spectrum with magnitude 1.0E12 [n/cm^2.s]
     group_flux_magnitude = 1.0E12
     neutron_spectrum = group_flux_magnitude * np.ones(num_n_groups)
-    flux_magnitudes = np.array([np.sum(neutron_spectrum)])
 
     # Get materials from geometry file
     mat_lib = MaterialLibrary(geom)
-    mats = list(mat_lib.values())
+    mats = mat_lib.items()
+    num_mats = len(mats)
 
-    # Create a list of elements in the material library
-    elements = Set([ ])
-    for m, mat in enumerate(mat_lib.keys()):
-        # Collapse elements in the material
-        mat_collapsed = mats[m].collapse_elements([])
-        element_list = mat_collapsed.comp.keys()
-        elements.update(element_list)
-    # Create PyNE material object for each element    
-    for element in elements:
-        mat_element = Material({element: 1.0})
-        mat_element.metadata['name'] = 'mat:%s' %nucname.name(element)
-        mat_element.density = 1.0
-        mats.append(mat_element)
-    
-    # Perform SNILB check and calculate eta
-    run_dir = 'step0'
+    # Perform SNILB check and calculate eta for each material in the geometry
+    run_dir = 'step0/mats'
+    if not os.path.exists(run_dir):
+        os.makedirs(run_dir)                    
     # Get the photon energy bin structure
     p_bins = _get_p_bins(num_p_groups)
-    eta, zero, tot = calc_eta(data_dir, mats, neutron_spectrum, flux_magnitudes, irr_times,
-                   decay_times, num_p_groups, p_bins, run_dir, clean)
+    eta, psrc_file = calc_eta(data_dir, mats, num_mats, neutron_spectrum, num_n_groups, irr_time,
+                              decay_times, p_bins, num_p_groups, run_dir)
+    # Copy phtn_src file to main directory to be used for Step 2
+    shutil.copy(psrc_file, 'step0_phtn_src')
+
+    # Create a list of unique elements in the geometry
+    elements = Set([ ])
+    for mat in mats:
+        # Collapse elements in the material
+        mat_collapsed = mat[1].collapse_elements([])
+        element_list = mat_collapsed.comp.keys()
+        elements.update(element_list)
+    # Create PyNE material library of elements
+    element_lib = MaterialLibrary()
+    for element in elements:
+        mat_element = Material({element: 1.0})
+        mat_element_name = "mat:{}".format(nucname.name(element))
+        mat_element.metadata['name'] = mat_element_name
+        mat_element.density = 1.0
+        # Add element to the material library
+        element_lib[mat_element_name] = mat_element.expand_elements()
+    # Add elements to mats    
+    elements = element_lib.items()
+    num_elements = len(elements)
     
+    # Perform SNILB check and calculate eta for unique elements in the geometry
+    run_dir = 'step0/elements'
+    if not os.path.exists(run_dir):
+        os.makedirs(run_dir)             
+    eta_element, psrc_file = calc_eta(data_dir, elements, num_elements, neutron_spectrum, num_n_groups,
+                                      irr_time, decay_times, p_bins, num_p_groups, run_dir)
+    np.set_printoptions(threshold=np.nan)
+
     # Save eta arrays to numpy arrays
     np.save('step0_eta.npy', eta)
-    np.save('step0_zero.npy', zero)
+    np.save('step0_eta_element.npy', eta_element)
     # Write a list of material names and eta values to a text file
     with open('step0_eta.txt', 'w') as f:
-        for m, mat in enumerate(mat_lib.keys()):
-            f.write('{}, eta={}, bgrd={:0.6E}, tot={:0.6E} \n'.format(mat, eta[m, :, -1], float(zero[m, :, -1]),
-                                                                      float(tot[m, :, -1])))
-        # Write eta value per element in the material library
-        f.write('------ \nEta value per element: \n------ \n')
-        mat_count = len(mat_lib.keys())
-        for m, mat in enumerate(elements):
-            f.write('{}, eta={}, bgrd={:0.6E}, tot={:0.6E} \n'.format(nucname.name(mat), eta[m + mat_count, :, -1],
-                                                                      float(zero[m + mat_count, :, -1]),
-                                                                      float(tot[m + mat_count, :, -1])))
+        for m, mat in enumerate(mats):
+            f.write('{0}, eta={1} \n'.format(mat[0].split(':')[1], eta[m, :, -1]))
+        f.write('------ \nTotal eta value per unique element: \n------ \n')
+        for e, element in enumerate(elements):
+            f.write('{0}, eta={1} \n'.format(element[0].split(':')[1], eta_element[e, :, -1]))
+
+    if clean:
+        print("Deleting intermediate files for Step 0")
+        shutil.rmtree(run_dir)
             
 def step1(cfg, cfg1):
     """ 
@@ -332,11 +349,11 @@ def step1(cfg, cfg1):
         data_hdf5path="/materials",
         nuc_hdf5path="/nucid",
         fine_per_coarse=1)
-
+               
 def step2(cfg, cfg2):
     """
-    This function calculates the T matrix for each material, neutron group, 
-    photon group, and decay time.
+    This function calculates the T matrix; T values per material, neutron group, photon group, 
+    and decay time.
     
     Parameters
     ----------
@@ -351,28 +368,33 @@ def step2(cfg, cfg2):
     num_n_groups = cfg['n_groups']
     geom = cfg2['n_geom_file']
     data_dir = cfg2['data_dir']
-    irr_times = str(cfg2['irr_time']).split(' ')
-    decay_times = str(cfg2['decay_time']).split(' ')
+    irr_time = cfg2['irr_time']
+    decay_times = str(cfg2['decay_times']).split(' ')
  
-    # Define a flat, 175 group, neutron spectrum with magnitude 1E12 [n/cm^2.s]
+    # Define a flat, 175 group, neutron spectrum with magnitude 1.0E12 [n/cm^2.s]
     group_flux_magnitude = 1.0E12
     neutron_spectrum = group_flux_magnitude * np.ones(num_n_groups)
-    flux_magnitudes = np.array([np.sum(neutron_spectrum)])
                 
     # Get materials from geometry file
     mat_lib = MaterialLibrary(geom)
-    mats = list(mat_lib.values())
+    mats = mat_lib.items()
+    num_mats = len(mats)
 
     # Calculate T matrix
     run_dir = 'step2'
+    if not os.path.exists(run_dir):
+        os.makedirs(run_dir)                
     # Get the photon energy bin structure
     p_bins = _get_p_bins(num_p_groups)
-    T = calc_T(data_dir, mats, neutron_spectrum, flux_magnitudes, irr_times,
-               decay_times, num_p_groups, p_bins, run_dir, clean)
-    
-    # Save numpy array
+    T = calc_T(data_dir, mats, num_mats, neutron_spectrum, num_n_groups, irr_time, decay_times,
+               p_bins, num_p_groups, run_dir)
+    # Save T matrix to numpy array
     np.save('step2_T.npy', T)
 
+    if clean:
+        print("Deleting intermediate files for Step 2")
+        shutil.rmtree(run_dir)
+        
 def step3(cfg, cfg2, cfg3):
     """
     This function creates the adjoint neutron source and writes the
@@ -391,7 +413,7 @@ def step3(cfg, cfg2, cfg3):
     num_n_groups = cfg['n_groups']
     num_p_groups = cfg['p_groups']
     n_geom = cfg2['n_geom_file']
-    decay_times = str(cfg2['decay_time']).split(' ')
+    decay_times = str(cfg2['decay_times']).split(' ')
     meshflux = cfg3['meshflux']
     atflux = cfg3['atflux']
     
@@ -459,19 +481,18 @@ def step3(cfg, cfg2, cfg3):
     
     # Save adjoint neutron source mesh file tagged with values for all decay times   
     m.mesh.save("adj_n_src.h5m")
-   
 
 def main():
     """ 
     This function manages the setup and steps 1-5 for the GT-CADIS workflow.
     """
     gtcadis_help = ('This script automates the GT-CADIS process of producing \n'
-                   'variance reduction parameters to optimize the neutron \n'
-                   'transport step of the Rigorous 2-Step (R2S) method.\n')
+                    'variance reduction parameters to optimize the neutron \n'
+                    'transport step of the Rigorous 2-Step (R2S) method.\n')
     setup_help = ('Prints the file "config.yml" to be filled in by the user.\n')
     step0_help = ('Performs SNILB criteria check.')
     step1_help = ('Creates the PARTISN input file for adjoint photon transport.')
-    step2_help = ('Calculates T matrix for each material in the geometry.')
+    step2_help = ('Calculates T matrix for materials in the geometry.')
     step3_help = ('Creates the adjoint neutron source.')
     
     parser = argparse.ArgumentParser()
@@ -491,13 +512,10 @@ def main():
             
     if args.command == 'step0':
         step0(cfg['general'], cfg['step2'])
-
     elif args.command == 'step1':
-        step1(cfg['general'], cfg['step1'])
-        
+        step1(cfg['general'], cfg['step1'])        
     elif args.command == 'step2':
         step2(cfg['general'], cfg['step2'])    
-
     elif args.command == 'step3':
         step3(cfg['general'], cfg['step2'], cfg['step3'])    
 

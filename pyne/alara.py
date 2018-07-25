@@ -886,85 +886,87 @@ def _find_phsrc_dc(idc, phtn_src_dc):
     else:
         # the idc doesn't exist in phtn_src_dc, convert the unit to `s`,
         idc_s = _convert_unit_to_s(idc)
+        phtn_src_dc_s = []
         for i, dc in enumerate(phtn_src_dc):
-            if dc == 'shutdown':
-                continue
             dc_s = _convert_unit_to_s(dc)
-            if idc_s == dc_s:
-                return dc
-            elif dc_s != 0.0 and (abs(idc_s - dc_s)/dc_s) < 1e-6:
-                return dc
+            if (abs(idc_s - dc_s)/dc_s) < 1e-6:
+                return phtn_src_dc[i]
         raise ValueError('Decay time {0} not found in phtn_src file'.format(idc)) 
 
-def _gt_normalize(neutron_spectrum):
-    """
-    Function that normalizes the neutron spectrum for ALARA fluxin file 
-
-    Parameters
-    ----------
-    neutron_spectrum: numpy array
-        Neutron energy spectrum to be normalized
-
-    Returns
-    -------
-    neutron_spectrum: numpy array
-        Normalized neutron energy spectrum
-    """
-    total = float(np.sum(neutron_spectrum))
-    if total > 0:
-        # Normalize neutron spectrum
-        neutron_spectrum /= total
-    return neutron_spectrum
-
-def _gt_write_matlib(mats, filename):
+def _gt_write_matlib(mats):
     """
     Function that writes ALARA matlib file
 
     Parameters
     ----------
-    mats: list
-        List of PyNE material objects of materials in the geometry
-    filename: str
-        Path to write ALARA matlib file
-    """
-    s = ""
-    for mat in mats:
-        s += mat.alara()
-        s += "\n"
-    with open(filename, 'w') as f:
-        f.write(s)
+    mats : list
+        List of tuples, (<mat name>, <PyNE material object>)
 
-def _gt_write_fluxin(fluxes, num_zones, fluxin_file):
+    Returns:
+    matlib: str
+        Formatted ALARA matlib
+    """
+    matlib = ""
+    for mat in mats:
+        matlib += mat[1].alara()
+        matlib += "\n"
+    return matlib
+
+def _gt_write_fluxin(fluxes, num_n_groups, num_mats):
     """
     Function that writes ALARA fluxin file
 
     Parameters
     ----------
     fluxes: numpy array
-        1D array of flux values for all zones in ALARA input
-    num_zones: int
-        Number of zones in ALARA input
-    fluxin_file: str
-        Path to write ALARA fluxin file
+        2D array of flux values (num_n_groups + 2, num_n_groups)
+    num_n_groups: int
+        Number of neutron energy groups
+    num_mats: int
+        Number of materials in ALARA input = number of materials in the problem geometry
+
+    Returns:
+    fluxin: str
+        Formatted ALARA fluxin
     """
-    s = ""
-    # Split flux array into a number of arrays equal to the number
-    # of zones in ALARA input
-    fluxes = np.split(fluxes, num_zones, axis = 0)
-    for j in range(num_zones):
-        flux = np.fliplr(fluxes[j].reshape(1, fluxes[j].size))
-        # Write flux groups in reverse order
-        for i in range(flux.size):
-            s += "{0:.6E} ".format(flux[0, i])
-            if (i + 1) % 6 == 0:
-                s += '\n'
-        s += '\n\n'
-    with open(fluxin_file, 'w') as f:
-        f.write(s)
-        
-def _gt_write_inp(run_dir, data_dir, mats, num_n_groups, flux_magnitudes,
-                  irr_times, decay_times, input_file, matlib_file,
-                  fluxin_file, phtn_src_file, num_p_groups, p_bins):
+    # Order flux groups from high to low for ALARA fluxin inp
+    fluxes_reversed = np.fliplr(fluxes[:,:])
+    fluxin = ""
+    for m in range(num_mats):
+        for n in range(num_n_groups + 2):
+            num_decimals = 6
+            num_entries_per_line = 7
+            fluxin += _gt_format(fluxes_reversed[n,:], num_decimals, num_entries_per_line)            
+            fluxin += '\n'
+    return fluxin
+
+def _gt_format(vector, decimals, columns):
+    """
+    Function that formats a vector of elements into a string for ALARA input file
+    
+    Parameters
+    ----------
+    vector: numpy array
+        1D array of values to be formatted into a string
+    decimals: int
+        Number of decimal points in the formatted numbers
+    columns: int
+        Number of elements per line
+
+    Returns
+    -------
+    string: str
+        Formatted string of vector values
+    """
+    string = ""
+    for i, v in enumerate(vector):
+        string += "{0:.{1}E} ".format(v, decimals)
+        if (i + 1) % columns == 0:
+            string += '\n'
+    return string
+            
+def _gt_write_inp(run_dir, data_dir, mats, num_mats, num_n_groups, flux_norm, irr_time, decay_times,
+                  input_file, matlib_file, fluxin_file, phtn_src_file, num_p_groups, p_bins):
     """
     Function that writes ALARA input file
 
@@ -975,13 +977,15 @@ def _gt_write_inp(run_dir, data_dir, mats, num_n_groups, flux_magnitudes,
     data_dir: str
         Path to directory containing nuclib and fendl files
     mats: list
-        List of PyNE material objects of materials in the geometry
+        List of tuples, (<mat name>, <PyNE material object>)
+    num_mats: int
+        Number of materials in mats
     num_n_groups: int
         Number of neutron energy groups
-    flux_magnitudes : numpy array
+    flux_norm : float
         Neutron flux normalization
-    irr_times : list
-        Irradiation times [s]
+    irr_time : float
+        Irradiation time [s]
     decay_times : list
         Decay times [s]
     input_file: str
@@ -996,10 +1000,11 @@ def _gt_write_inp(run_dir, data_dir, mats, num_n_groups, flux_magnitudes,
         The number of photon energy groups for ALARA calculation
     p_bins: numpy array
         Photon energy bin bounds
+
+    Returns:
+    inp: str
+        Formatted ALARA input
     """
-    # Two extra zones are added per material; one for the whole spectrum
-    # and one for the zero spectrum. 
-    num_zones = len(mats) * (num_n_groups + 2)
     inp = Template("""
 geometry rectangular
 
@@ -1012,7 +1017,6 @@ $zone_mat
 end
 
 $mix
-
 $flux
 output zone
 
@@ -1027,11 +1031,11 @@ end
 schedule total
 $irr
 end
-                   
+
 cooling
 $dt
 end
-                   
+
 material_lib $matlib_file
 element_lib $data_dir/nuclib
 data_library alaralib $data_dir/fendl2.0bin
@@ -1040,67 +1044,40 @@ impurity 5e-6 1e-3
 dump_file $run_dir/dump_file
     """)
     
-    # Zones input
+    # Zones input and material assignment
+    num_zones = num_mats * (num_n_groups + 2)
     zone = ""
-    for z in range(num_zones):
-        zone += "    1.0 zone_{0}\n".format(z)
-    # Zones material assignment
     zone_mat = ""
     for z in range(num_zones):
+        zone += "    1.0 zone_{0}\n".format(z)
         mix_num = int(np.floor(z / float(num_n_groups + 2)))
         zone_mat += "    zone_{0} mix_{1}\n".format(z, mix_num)
-    # Material mixtures input
+    # Material mixture input
     mix = ""
     for m, mat in enumerate(mats):
         mix += "mixture mix_{0}\n".format(m)
-        mix += "    material {0} 1 1\nend\n\n".format(mat.metadata["name"])
+        mix += "    material {0} 1 1\nend\n\n".format(mat[0])
     # Flux input
-    flux = ""
-    for i, flux_magnitude in enumerate(flux_magnitudes):
-        flux += "flux flux_{0} {1} {2} 0 default\n".format(i, fluxin_file, flux_magnitude)
+    flux = "flux flux_inp {0} {1} 0 default".format(fluxin_file, flux_norm)
     # Photon energy bin structure
-    p_groups = "    photon_source {0}/fendl2.0bin {1} {2}\n    {3}\n".format(data_dir, phtn_src_file,
-                                                        num_p_groups, _gt_format_p_groups(p_bins))
+    # Precisoin and number of values per line of the photon groups
+    decimals = 2
+    entries_per_line = 8
+    p_groups = "photon_source {0}/fendl2.0bin {1} {2}\n{3}".format(data_dir, phtn_src_file, num_p_groups,
+                                                                   _gt_format(p_bins, decimals, entries_per_line))
     # Irradiation schedule input
-    irr = ""
-    for i, irr_time in enumerate(irr_times):
-        irr += "    {0} s flux_{1} my_schedule 0 s\n".format(irr_time, i)
+    irr = "    {0} s flux_inp my_schedule 0 s".format(irr_time)
     # Decay times input
     dt = ""
     for d in decay_times:
         dt += "    {0} s\n".format(d)
     
-    s = inp.substitute(zone=zone, zone_mat=zone_mat, mix=mix, matlib_file=matlib_file,
-                       data_dir=data_dir, run_dir=run_dir, flux=flux, p_groups=p_groups,
-                       irr=irr, dt=dt)
-    # Write ALARA input file
-    with open(input_file, 'w') as f:
-        f.write(s)
+    inp = inp.substitute(zone=zone, zone_mat=zone_mat, mix=mix, matlib_file=matlib_file, data_dir=data_dir,
+                         run_dir=run_dir, flux=flux, p_groups=p_groups, irr=irr, dt=dt)
+    return inp              
 
-def _gt_format_p_groups(p_groups):
-    """
-    Function that formats photon energy group structure into a string 
-    to be written to ALARA input file
-
-    Parameters
-    ----------
-    p_groups: numpy array
-        Array of photon energy bins bounds
-
-    Returns
-    -------
-    p_string: str
-        Formatted photon energy groups structure 
-    """
-    p_string = ""
-    for i, p in enumerate(p_groups):
-        p_string += "{0:.2E} ".format(p)
-        if (i + 1) % 8 == 0:
-            p_string += '\n    '
-    return p_string
-
-def _gt_alara(data_dir, mats, neutron_spectrum, flux_magnitudes, irr_times, 
-              decay_times, num_p_groups, p_bins, run_dir):
+def _gt_alara(data_dir, mats, num_mats, neutron_spectrum, num_n_groups, irr_time, decay_times,
+              num_decay_times, p_bins, num_p_groups, run_dir):
     """
     Function that prepares necessary input files and runs ALARA
     
@@ -1109,19 +1086,23 @@ def _gt_alara(data_dir, mats, neutron_spectrum, flux_magnitudes, irr_times,
     data_dir : str
         Path to directory containing nuclib and fendl files
     mats : list
-        List of PyNE material objects of materials in the geometry
+        List of tuples, (<mat name>, <PyNE material object>)
+    num_mats: int
+        Number of materials in mats
     neutron_spectrum : numpy array
-        Neutron energy group spectrum (length is equal to number of n energy groups)
-    flux_magnitudes : numpy array
-        Neutron flux normalization
-    irr_times : list
-        Irradiation times [s]
+        Neutron energy group spectrum (length is equal to number of num_n_groups)
+    num_n_groups: int
+        Number of neutron energy groups
+    irr_time : float
+        Irradiation time [s]
     decay_times : list
         Decay times [s]
-    num_p_groups : int
-        Number of photon energy groups for ALARA calculation
+    num_decay_times: int
+        Number of decay times
     p_bins: numpy array
         Photon energy bin bounds
+    num_p_groups : int
+        Number of photon energy groups for ALARA calculation
     run_dir : str
         Path to write ALARA input and output files
 
@@ -1130,90 +1111,92 @@ def _gt_alara(data_dir, mats, neutron_spectrum, flux_magnitudes, irr_times,
     phtn_src_file : str
         Path to ALARA output photon source file
     """
-    neutron_spectrum = _gt_normalize(neutron_spectrum)
-    num_n_groups = len(neutron_spectrum)
-    num_mats = len(mats)
-    num_decay_times = len(decay_times)
-    num_irr_times = len(irr_times)
+    # Normalize neutron energy spectrum for ALARA fluxin file
+    flux_norm = np.linalg.norm(neutron_spectrum, ord=1)
+    if flux_norm > 0:
+        # Normalize neutron spectrum
+        n_spectrum = neutron_spectrum[:] / flux_norm
 
     # Write matlib file
     matlib_file = os.path.join(run_dir, "matlib")
-    _gt_write_matlib(mats, matlib_file)
+    with open(matlib_file, 'w') as f:
+        alara_matlib = _gt_write_matlib(mats)
+        f.write(alara_matlib)
 
     # Write fluxin file
     fluxin_file = os.path.join(run_dir, "fluxin")
-    fluxes = np.array([])
-    for m in range(num_mats):
-        for n in range(num_n_groups):
-            temp_spectrum = np.zeros(num_n_groups)
-            temp_spectrum[n] = neutron_spectrum[n]
-            fluxes = np.hstack([fluxes, temp_spectrum])
-        # Append total spectrum    
-        fluxes = np.hstack([fluxes, neutron_spectrum])
-        # Append blank "zero" spectrum
-        fluxes = np.hstack([fluxes, np.zeros(num_n_groups)])
-    num_flux_blocks = num_mats * (num_n_groups + 2)
-    _gt_write_fluxin(fluxes, num_flux_blocks, fluxin_file)
-
-    # Write geom file
+    fluxes = np.zeros((num_n_groups + 2, num_n_groups))
+    for n in range(num_n_groups):
+        fluxes[n, n] = n_spectrum[n]
+    # Add total spectrum. Leave last row all zeros, blank "zero" spectrum    
+    fluxes[num_n_groups, :] = n_spectrum[:]
+    # Total number of materials in ALARA input file
+    with open(fluxin_file, 'w') as f:
+        alara_fluxin = _gt_write_fluxin(fluxes, num_n_groups, num_mats)
+        f.write(alara_fluxin)
+        
+    # Write ALARA inp file
     input_file = os.path.join(run_dir, "inp")
     phtn_src_file = os.path.join(run_dir, "phtn_src")
-    _gt_write_inp(run_dir, data_dir, mats, num_n_groups, flux_magnitudes, 
-                  irr_times, decay_times, input_file, matlib_file,
-                  fluxin_file, phtn_src_file, num_p_groups, p_bins)
-
+    # Number of zones in ALARA inp = total number of materials * total number of flux blocks per material
+    with open(input_file, 'w') as f:
+        alara_inp = _gt_write_inp(run_dir, data_dir, mats, num_mats, num_n_groups, flux_norm, irr_time,
+                                  decay_times, input_file, matlib_file, fluxin_file, phtn_src_file,
+                                  num_p_groups, p_bins)
+        f.write(alara_inp)
+    
     # Run ALARA
     sub = subprocess.check_output(['alara', input_file], stderr=subprocess.STDOUT)
     return phtn_src_file
 
-def calc_eta(data_dir, mats, neutron_spectrum, flux_magnitudes, irr_times,
-             decay_times, num_p_groups, p_bins, run_dir, clean):
+def calc_eta(data_dir, mats, num_mats, neutron_spectrum, num_n_groups, irr_time, decay_times, p_bins,
+             num_p_groups, run_dir):
     """
-    Function that returns eta values (SNILB check result) for each material 
-    and element in the geometry and each decay time
+    Function that returns eta values (SNILB check result) for each material/element and each decay time
     
     Parameters
     ----------
     data_dir : str
         Path to directory containing nuclib and fendl files
-    mats : list
-        List of PyNE material objects of materials and elements in the geometry
+    mats: list
+        List of tuples, (<mat name>, <PyNE material object>)
+    num_mats: int
+        Number of materials in mats
     neutron_spectrum : numpy array
-        Neutron energy spectrum (length is equal to number of n energy groups)
-    flux_magnitudes : numpy array
-        Neutron flux normalization
-    irr_times : list
-        Irradiation times [s]
+        Neutron energy spectrum (length is equal to number of num_n_groups)
+    num_n_groups: int
+        Number of neutron energy groups
+    irr_time : float
+        Irradiation time [s]
     decay_times : list
         Decay times [s]
-    num_p_groups : int
-        The number of photon energy groups for ALARA calculation
     p_bins: numpy array
-       Photon energy bin bounds
+        Photon energy bin bounds
+    num_p_groups : int
+        Number of photon energy groups for ALARA calculation
     run_dir: str
         Path to write ALARA input and output files    
-    clean : bool
-        If True, remove run_dir
         
     Returns
     ----------
-    eta : numpy array
-        eta value per photon group for each material and element listed.  
-        This is a 3D array [num_mats, num_decay_times, num_p_groups + 1]
+    eta: numpy array
+        eta value per photon group for each material listed.  
+        This is a 3D array [mat, decay_time, num_p_groups + 1]
+    phtn_src_file: str
+        Path to ALARA produced photon source file
     """
-    num_n_groups = len(neutron_spectrum)
-    num_mats = len(mats)
     num_decay_times = len(decay_times)
     
     # Run ALARA
-    if not os.path.exists(run_dir):
-        os.makedirs(run_dir)    
-    phtn_src_file = _gt_alara(data_dir, mats, neutron_spectrum, flux_magnitudes, 
-                              irr_times, decay_times, num_p_groups, p_bins, run_dir)
+    phtn_src_file = _gt_alara(data_dir, mats, num_mats, neutron_spectrum, num_n_groups, irr_time,
+                              decay_times, num_decay_times, p_bins, num_p_groups, run_dir)
     # Parse ALARA output
-    sup = np.zeros(shape=(num_mats, num_decay_times, num_p_groups + 1))
-    tot = np.zeros(shape=(num_mats, num_decay_times, num_p_groups + 1))
-    zero = np.zeros(shape=(num_mats, num_decay_times, num_p_groups + 1))
+    # Create an array to store results from photn_src file
+    entries_per_material = (num_n_groups + 2) * num_decay_times
+    num_rows = num_mats * entries_per_material
+    # one for each group and last column for a total
+    num_columns = num_p_groups + 1
+    p_sources = np.zeros(shape=(num_rows, num_columns))
     with open(phtn_src_file, 'r') as f:
         # Initiate a block number
         i = 0
@@ -1221,121 +1204,105 @@ def calc_eta(data_dir, mats, neutron_spectrum, flux_magnitudes, irr_times,
             l = line.split()
             if l[0] == "TOTAL" and l[1] != "shutdown":
                 row = np.array([float(x) for x in l[3:]])
-                row_sum = np.sum(row)
-                # Material index will change every (num_n_groups + 2) * num_decay_times
-                entries_per_material = (num_n_groups + 2) * num_decay_times
-                m = int(np.floor(float(i) / entries_per_material))
-                dt = i % num_decay_times
-                n = int(np.floor(i/float(num_decay_times))) % (num_n_groups + 2)
-                if n == num_n_groups:
-                    tot[m, dt, :] = np.hstack([row, row_sum])
-                elif n == num_n_groups + 1:
-                    zero[m, dt, :] = np.hstack([row, row_sum])
-                else:
-                    sup[m, dt, :] += np.hstack([row, row_sum])
+                p_sources[i, :-1] = row[:]
+                # Total emission intensity over all groups
+                p_sources[i, -1] = np.sum(row)
                 i += 1
                 
     # Claculate eta
     eta = np.zeros(shape=(num_mats, num_decay_times, num_p_groups + 1))
-    for dt in range(len(decay_times)):
-       for m in range(len(mats)):
-           # Populate eta array
-           for p in range(num_p_groups + 1):
-               eta[m, dt, p] = sup[m, dt, p] / float(tot[m, dt, p])
-               #if np.isclose(tot[m, dt, p] - zero[m, dt, p], 0.0, rtol=1E-5) and \
-               #    np.isclose(sup[m, dt, p] - zero[m, dt, p]*num_n_groups, 0.0, \
-               #    rtol=1E-5):
-                   # tot = background and sup = background, eta = NaN >> set = 1.0
-               #    eta[m, dt, p] = 1.0
-               #elif tot[m, dt, p] > zero[m, dt, p]:
-                   # tot and sup > background, eta > 0
-               #    eta[m, dt, p] = (sup[m, dt, p] - zero[m, dt, p]*num_n_groups)/ \
-               #                    (tot[m, dt, p] - zero[m, dt, p])
-               #else:
-                   # tot = background and sup != background, eta = inf >> ste = 1e6
-               #    eta[m, dt, p] = 1.0E10
+    # Split results array "p_sources" by the number of materials
+    p_sources = np.split(p_sources, num_mats, axis=0)
+    for m in range(num_mats):
+        p_source = p_sources[m].reshape(num_n_groups + 2, num_decay_times, num_p_groups + 1)
+        eta[m, :, :] = (np.sum(p_source[:-2,:,:], axis=0) - p_source[-1, :, :] * num_n_groups)/ \
+                       (p_source[-2, :, :] - p_source[-1, :, :])
+
     eta[np.isnan(eta)] = 1.0
     eta[np.isinf(eta)] = 1.0E10
-    # Copy  phtn_src file to main directory to be used for Step 2           
-    shutil.copy(phtn_src_file, 'step0_phtn_src')
-    if clean:
-        print("Deleting intermediate files for Step 0")
-        shutil.rmtree(run_dir)  
-    return eta, zero, tot
     
-def calc_T(data_dir, mats, neutron_spectrum, flux_magnitudes, irr_times,
-           decay_times, num_p_groups, p_bins, run_dir, clean):
+    return eta, phtn_src_file
+
+def calc_T(data_dir, mats, num_mats, neutron_spectrum, num_n_groups, irr_time, decay_times, p_bins,
+           num_p_groups, run_dir):
     """
-    Function that returns T matrix for each material, decay time, neutron group, 
-    and photon group.
+    Function that returns T matrix. T values per material, decay time, neutron energy group, 
+    and photon energy group.
     
     Parameters
     ----------
     data_dir : str
         Path to directory containing nuclib and fendl files
-    mats : list
-        List of PyNE material objects of materials in the geometry
+    mats: list
+        List of tuples, (<mat name>, <PyNE material object>) 
+    num_mats: int
+        Number of materials in mats
     neutron_spectrum : numpy array
         Neutron energy spectrum (length is equal to number of n energy groups)
-    flux_magnitudes : numpy array
-        Magnitude of flux in each neutron energy group
-    irr_times : list
-        Irradiation times [s]
+    num_n_groups: int
+        Number of neutron energy groups
+    irr_time : float
+        Irradiation time [s]
     decay_times : list
         Decay times [s]
-    num_p_groups : int
-        The number of photon energy groups for ALARA calculation
+    p_bins: numpy array
+        Photon energy bin bounds
+    num_p_groups: int
+        Number of photon energy groups for ALARA calculation
     run_dir: str
         Path to write ALARA input and output files    
-    clean : bool
-        If True, remove run_dir
         
     Returns
     ----------
     T : numpy.ndarray
-        T matrix for each material listed.  This is a 4D array
-        [num_mats, num_decay_times, num_n_groups, num_p_groups].
+        T matrix for each material listed. This is a 4D array
+        [num_mats, num_decay_times, num_n_groups, num_p_groups + 1].
     """
-    num_n_groups = len(neutron_spectrum)
-    num_mats = len(mats)
     num_decay_times = len(decay_times)
-                         
-    # Run ALARA only if photon source from step 0 doesn't exist otherwise, parse
-    # the existing photon source
+    
+    # Run ALARA only if photon source file from step 0 doesn't exist otherwise, parse existing one.
     phtn_src_file = 'step0_phtn_src'
     if not os.path.exists(phtn_src_file):
-        # Make run_dir and run ALARA
-        if not os.path.exists(run_dir):
-            os.makedirs(run_dir)
-        phtn_src_file = _gt_alara(data_dir, mats, neutron_spectrum, flux_magnitudes,
-                                  irr_times, decay_times, num_p_groups, p_bins, run_dir)
+        # Run ALARA.
+        phtn_src_file = _gt_alara(data_dir, mats, num_mats, neutron_spectrum, num_n_groups, irr_time,
+                                  decay_times, num_decay_times, p_bins, num_p_groups, run_dir)
     else:
-        print('Using existing ALARA photon source file, step0_phtn_src, from Step 0.')
+        print('Using existing ALARA photon source file, step0_phtn_src, produced in Step 0.')
         
-    # Parse ALARA output and calculate T matrix
-    T = np.zeros(shape=(num_mats, num_decay_times, num_n_groups, num_p_groups))
-    # Total numer of entries = entries per material * num_mats
+    # Parse ALARA output.
+    # Create an array to store results from photn_src file.
     entries_per_material = (num_n_groups + 2) * num_decay_times
-    total_enetries = num_mats * entries_per_material
+    num_rows = num_mats * entries_per_material
+    p_sources = np.zeros(shape=(num_rows, num_p_groups))
     with open(phtn_src_file, 'r') as f:
+        # Initiate a block number.
         i = 0
         for line in f.readlines():
             l = line.split()
-            # Need to stop reading before beginning of elements results
-            if i == total_enetries:
-                break
             if l[0] == "TOTAL" and l[1] != "shutdown":
-                row = np.array([float(x) for x in l[3:]])
-                # Material index will change every (num_n_groups + 2) * num_decay_times
-                m = int(np.floor(float(i) / entries_per_material))
-                dt = i % num_decay_times
-                n = int(np.floor(i/float(num_decay_times))) % (num_n_groups + 2)
-                if (n != num_n_groups) and (n != num_n_groups + 1):
-                    T[m, dt, n, :] = row / neutron_spectrum[n]
+                p_sources[i, :] = np.array([float(x) for x in l[3:]])
                 i += 1
-  
-    if clean:
-        print("Deleting intermediate files for Step 2")
-        shutil.rmtree(run_dir)
-    return T
 
+    # Calculate T matrix.
+    # T has two components; one from neutron activation and one from initial activity.
+    # Create a matrix with a third dimension of size num_n_groups + 1. The last value in that dimension
+    # is the initial activity which is independent of the flux.
+    T = np.zeros(shape=(num_mats, num_decay_times, num_n_groups + 1, num_p_groups))
+    # Split results array "p_sources" by the number of materials.
+    p_sources = np.split(p_sources, num_mats, axis=0)
+    n_spectrum = neutron_spectrum.reshape(num_n_groups, 1, 1)
+    for m in range(num_mats):
+        p_source = p_sources[m].reshape(num_n_groups + 2, num_decay_times, num_p_groups)
+        # Subtract the initial activity per group from the results of activation for all n groups.
+        # Store values per group to a temporary array
+        T_mat = np.divide(np.subtract(p_source[:-2, :, :], p_source[-1, :, :]), n_spectrum)
+        # T_mat has shape (num_n_groups, num_decay_times, num_p_groups), need to change to
+        # (num_decay_times, num_n_groups, num_p_groups). Use numpy.swapaxes.
+        T[m, :, :-1, :] = np.swapaxes(T_mat, 0, 1)
+        # Store initial activity to T array
+        T[m, :, -1, :] = p_source[-1, :,:]
+
+    T[np.isnan(T)] = 1.0
+    T[np.isinf(T)] = 1.0E10
+
+    return T    
