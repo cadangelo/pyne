@@ -16,6 +16,7 @@ from pyne.dagmc import discretize_geom, load, cell_material_assignments
 from pyne.alara import calc_eta, calc_T
 from pyne.cccc import Atflux
 
+
 config_filename = 'config.yml'
 
 config = \
@@ -412,7 +413,7 @@ def step3(cfg, cfg2, cfg3):
     num_n_groups = cfg['n_groups']
     num_p_groups = cfg['p_groups']
     n_geom = cfg2['n_geom_file']
-    decay_times = str(cfg2['decay_time']).split(' ')
+    decay_times = str(cfg2['decay_times']).split(' ')
     meshflux = cfg3['meshflux']
     atflux = cfg3['atflux']
     
@@ -480,19 +481,18 @@ def step3(cfg, cfg2, cfg3):
     
     # Save adjoint neutron source mesh file tagged with values for all decay times   
     m.mesh.save("adj_n_src.h5m")
-   
 
 def main():
     """ 
     This function manages the setup and steps 1-5 for the GT-CADIS workflow.
     """
     gtcadis_help = ('This script automates the GT-CADIS process of producing \n'
-                   'variance reduction parameters to optimize the neutron \n'
-                   'transport step of the Rigorous 2-Step (R2S) method.\n')
+                    'variance reduction parameters to optimize the neutron \n'
+                    'transport step of the Rigorous 2-Step (R2S) method.\n')
     setup_help = ('Prints the file "config.yml" to be filled in by the user.\n')
     step0_help = ('Performs SNILB criteria check.')
     step1_help = ('Creates the PARTISN input file for adjoint photon transport.')
-    step2_help = ('Calculates T matrix for each material in the geometry.')
+    step2_help = ('Calculates T matrix for materials in the geometry.')
     step3_help = ('Creates the adjoint neutron source.')
     
     parser = argparse.ArgumentParser()
