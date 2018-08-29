@@ -424,8 +424,6 @@ def step3(cfg, cfg2, cfg3):
     atflux = cfg3['atflux']
     tgt_cadis = cfg3['tgt_cadis']
     
-    # Base of geometry file name
-    basename = n_geom.split("/")[-1].split(".")[0]
 
     # The total number of photon and neutron energy groups 
     total_num_groups = num_n_groups + num_p_groups
@@ -457,14 +455,15 @@ def step3(cfg, cfg2, cfg3):
     mat_names = list(ml.keys())
     cell_mats = cell_material_assignments(n_geom)
     
-    # If Time-integrated GT-CADIS, get dt_mov tag which gives the
+    # If Time-integrated GT-CADIS, get dt_move tag which gives the
     #  fraction of this time step over the the total time of geometry movement
     if tgt_cadis:
-        #get dt_mov tag
-        #m.dt_mov = IMeshTag(32, name='MOVE_TAG')
-        #m.dt_mov[:] = 
-    elif:
-        dt_move = 1.0
+      #get dt_move tag
+      #m.dt_move = IMeshTag(32, name='MOVE_TAG')
+      #m.dt_move[:] =
+      print "tgt cadis" 
+    else:
+      dt_move = 1.0
     
     # Load T matrix
     if not os.path.exists('step2_T.npy'):
@@ -484,7 +483,7 @@ def step3(cfg, cfg2, cfg3):
                 mat = mat_names.index(cell_mats[cell])
                 for g in range(num_n_groups):
                     for h in range(num_p_groups):
-                        temp[i, g + num_p_groups] += adj_p[i, h]*T[mat, t, g, h]*vol_frac*dt_mov
+                        temp[i, g + num_p_groups] += adj_p[i, h]*T[mat, t, g, h]*vol_frac*dt_move
         # Tag the mesh with the adjoint n source values
         tag_name = "adj_n_src_{0}".format(dt)
         m.adj_n_src = IMeshTag(total_num_groups, name=tag_name)
@@ -495,11 +494,18 @@ def step3(cfg, cfg2, cfg3):
 
 def step4(cfg, cfg2, cfg4):
 
+    num_n_groups = cfg['n_groups']
+    num_p_groups = cfg['p_groups']
+    n_geom = cfg2['n_geom_file']
     decay_times = str(cfg2['decay_times']).split(' ')
     adj_n_src = cfg4['adj_n_src'] 
 
+    # The total number of photon and neutron energy groups 
+    total_num_groups = num_n_groups + num_p_groups
     #load mesh containing adj. neutron source
     m = Mesh(structured=True, mesh=adj_n_src)
+    # Base of geometry file name
+    basename = n_geom.split("/")[-1].split(".")[0]
  
     for t, dt in enumerate(decay_times): 
         tag_name = "adj_n_src_{0}".format(dt)
@@ -523,6 +529,7 @@ def main():
     step1_help = ('Creates the PARTISN input file for adjoint photon transport.')
     step2_help = ('Calculates T matrix for materials in the geometry.')
     step3_help = ('Creates the adjoint neutron source.')
+    step4_help = ('Creates the adjoint neutron PARTISN input file.')
     
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(help=gtcadis_help, dest='command')
@@ -531,6 +538,7 @@ def main():
     step1_parser = subparsers.add_parser('step1', help=step1_help)
     step2_parser = subparsers.add_parser('step2', help=step2_help)
     step3_parser = subparsers.add_parser('step3', help=step3_help)
+    step4_parser = subparsers.add_parser('step4', help=step4_help)
 
     args, other = parser.parse_known_args()
     if args.command == 'setup':
@@ -547,6 +555,8 @@ def main():
         step2(cfg['general'], cfg['step2'])    
     elif args.command == 'step3':
         step3(cfg['general'], cfg['step2'], cfg['step3'])    
+    elif args.command == 'step4':
+        step4(cfg['general'], cfg['step2'], cfg['step4'])    
 
 if __name__ == '__main__':
     main()
