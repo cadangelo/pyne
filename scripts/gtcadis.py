@@ -8,7 +8,7 @@ import argparse
 import numpy as np
 from sets import Set
 from pyne import nucname
-from pyne.mesh import Mesh
+from pyne.mesh import Mesh, NativeMeshTag
 from pyne.bins import pointwise_collapse
 from pyne.material import Material, MaterialLibrary
 from pyne.partisn import write_partisn_input, isotropic_vol_source, mesh_to_isotropic_source
@@ -440,7 +440,7 @@ def step3(cfg, cfg2, cfg3):
       raise RuntimeError("No adjoint flux file given")
 
     # Size of flux tag is equal to the total number of energy groups
-    m.flux = IMeshTag(total_num_groups)
+    m.flux = NativeMeshTag(total_num_groups)
     adj_p = m.flux[:]
 
     # Load geometry and get material assignments
@@ -470,7 +470,7 @@ def step3(cfg, cfg2, cfg3):
                         temp[i, g + num_p_groups] += adj_p[i, h]*T[mat, t, g, h]*vol_frac
         # Tag the mesh with the adjoint n source values
         tag_name = "adj_n_src_{0}".format(dt)
-        m.adj_n_src = IMeshTag(total_num_groups, name=tag_name)
+        m.adj_n_src = NativeMeshTag(total_num_groups, name=tag_name)
         m.adj_n_src[:] = temp
         # Create isotropic source and write out partisn input file 
         source = mesh_to_isotropic_source(m, tag_name)
@@ -480,7 +480,7 @@ def step3(cfg, cfg2, cfg3):
         shutil.move("{0}_partisn.inp".format(basename),   "{0}_partisn_{1}.inp".format(basename, dt))        
     
     # Save adjoint neutron source mesh file tagged with values for all decay times   
-    m.mesh.save("adj_n_src.h5m")
+    m.save("adj_n_src.h5m")
 
 def main():
     """ 
