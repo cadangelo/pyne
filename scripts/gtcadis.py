@@ -446,7 +446,7 @@ def step3(cfg, cfg2, cfg3):
 
 
     # Size of flux tag is equal to the total number of energy groups
-    m.flux = IMeshTag(total_num_groups)
+    m.flux = NativeMeshTag(total_num_groups)
     adj_p = m.flux[:]
 
     # Load geometry and get material assignments
@@ -459,7 +459,7 @@ def step3(cfg, cfg2, cfg3):
     #  fraction of this time step over the the total time of geometry movement
     if tgt_cadis:
       #get dt_move tag
-      #m.dt_move = IMeshTag(32, name='MOVE_TAG')
+      #m.dt_move = NativeMeshTag(32, name='MOVE_TAG')
       #m.dt_move[:] =
       print "tgt cadis" 
     else:
@@ -486,11 +486,12 @@ def step3(cfg, cfg2, cfg3):
                         temp[i, g + num_p_groups] += adj_p[i, h]*T[mat, t, g, h]*vol_frac*dt_move
         # Tag the mesh with the adjoint n source values
         tag_name = "adj_n_src_{0}".format(dt)
-        m.adj_n_src = IMeshTag(total_num_groups, name=tag_name)
+        m.adj_n_src = NativeMeshTag(total_num_groups, name=tag_name)
         m.adj_n_src[:] = temp
     
     # Save adjoint neutron source mesh file tagged with values for all decay times   
-    m.mesh.save("adj_n_src.h5m")
+    #m.save("adj_n_src.h5m", True)
+    m.write_hdf5("adj_n_src.h5m")
 
 def step4(cfg, cfg2, cfg4):
 
