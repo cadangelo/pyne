@@ -1838,7 +1838,7 @@ class Wwinp(Mesh):
         X_e_upper_bounds containing a list of energy upper bounds.
         """
 
-        super(Wwinp, self).__init__(mesh=mesh, structured=True)
+        super(Wwinp, self).__init__(mesh=mesh, structured=True, mats=None)
 
         # Set geometry related attributes.
         self.nr = 10
