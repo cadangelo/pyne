@@ -529,10 +529,8 @@ def step4(cfg, cfg4):
     # Use CADIS to generate biased source 
     cadis(adj_flux_mesh, adj_flux_tag, n_src_mesh, n_src_tag, ww_mesh, ww_tag, n_src_bias_mesh, n_src_bias_tag, beta=5)
 
-    particle = 'n'
-    e_bounds_tag_name = '{0}_e_upper_bounds'.format(particle) 
-    tag_e_bounds = \
-         ww_mesh.tag(e_bounds_tag_name, size=175, dtype=float, tagtype='nat_mesh')
+    e_bounds_tag_name = 'n_e_upper_bounds' 
+    ww_mesh.tag(e_bounds_tag_name, size=175, dtype=float, tagtype='nat_mesh')
     tag_e_bounds = ww_mesh.get_tag(e_bounds_tag_name)
     tag_e_bounds[ww_mesh] = [1.00E-07, 4.14E-07, 5.32E-07, 6.83E-07,
     8.76E-07, 1.13E-06, 1.44E-06, 1.86E-06, 2.38E-06, 3.06E-06, 3.93E-06, 5.04E-06,
@@ -562,7 +560,7 @@ def step4(cfg, cfg4):
     wwinp.read_mesh(ww_mesh.mesh)
     
     wwinp.save("wwinp.h5m")
-    n_src_mesh.save("biased_source.h5m")
+    n_src_bias_mesh.save("biased_source.h5m")
     wwinp.write_wwinp("wwinp.out")
     
 
