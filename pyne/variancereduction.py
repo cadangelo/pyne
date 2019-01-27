@@ -97,15 +97,21 @@ def cadis(adj_flux_mesh, adj_flux_tag, q_mesh, q_tag,
 
     # calculate the total response per source particle (R)
     R = 0
+    k = 0
     for adj_ve, q_ve in zip(adj_ves, q_ves):
+        k= k+1
         adj_flux = adj_flux_mesh.get_tag(adj_flux_tag)[adj_ve]
         adj_flux = np.atleast_1d(adj_flux)
+#        print ("adj flux", adj_flux)
         q = q_mesh.get_tag(q_tag)[q_ve]
         q = np.atleast_1d(q)
 
         vol = adj_flux_mesh.elem_volume(adj_ve)
         for i in range(0, num_e_groups):
             R += adj_flux[i]*q[i]*vol/q_tot
+        
+    
+    print ("# els in adjves and qves", k)
 
     # generate weight windows and biased source densities using R
     ww_mesh.tag(ww_tag, np.zeros(num_e_groups, dtype=float), 'nat_mesh', size=num_e_groups, dtype=float)
@@ -131,6 +137,7 @@ def cadis(adj_flux_mesh, adj_flux_tag, q_mesh, q_tag,
         tag_ww[ww_ve] = [R/(adj_flux[i]*(beta + 1.)/2.)
                          if adj_flux[i] != 0.0 else 0.0
                          for i in range(num_e_groups)]
+        print("ww tag", tag_ww[ww_ve][0])
 
 
 def magic(meshtally, tag_name, tag_name_error, **kwargs):

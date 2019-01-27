@@ -515,16 +515,17 @@ def step4(cfg, cfg4):
     a = adj_flux_mesh.flux[:]
     adj_flux_mesh.flux2[:] = a[:,42:]
     adj_flux_tag = "flux2"
+    adj_flux_mesh.save("adj_n_flux_mesh.h5m")
 
     # Create source mesh tags
     n_src_mesh = Mesh(structured=True, mesh=n_src, mats=None)
     n_src_tag = "source_density"
-    #n_src_bias_mesh = n_src_mesh
-    n_src_bias_mesh = Mesh(structured=True, mesh=n_src, mats=None)
+    n_src_bias_mesh = n_src_mesh
+    #n_src_bias_mesh = Mesh(structured=True, mesh=n_src, mats=None)
     n_src_bias_tag= "biased_source_density"
     # Create weight window tag
     #ww_mesh = adj_flux_mesh
-    ww_mesh = Mesh(structured=True, mesh='blank_mesh.h5m', mats=None)
+    ww_mesh = Mesh(structured=True, mesh='adj_n_mesh.h5m', mats=None)
     ww_tag = "ww_n"
     
     # Use CADIS to generate biased source 
@@ -558,12 +559,11 @@ def step4(cfg, cfg4):
     1.69E+01, 1.73E+01, 1.96E+01]
 
     wwinp = Wwinp()
-    print ("before read mesh")
     wwinp.read_mesh(ww_mesh.mesh)
-    print ("after read mesh")
     
     wwinp.save("wwinp.h5m")
-    n_src_bias_mesh.save("biased_source.h5m")
+    #n_src_bias_mesh.save("biased_source.h5m")
+    n_src_mesh.save("biased_source.h5m")
     wwinp.write_wwinp("wwinp.out")
     
 
