@@ -659,6 +659,7 @@ def main():
     step2_help = ('Calculates T matrix for materials in the geometry.')
     step3_help = ('Creates the adjoint neutron source and writes the PARTISN input file for adjoint neutron transport.')
     step4_help = ('Generates the biased source and weight windows to optimize neutron transport.')
+    step5_help = ('Calculated the squarred error in the photon source.')
     
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(help=gtcadis_help, dest='command')
@@ -668,6 +669,7 @@ def main():
     step2_parser = subparsers.add_parser('step2', help=step2_help)
     step3_parser = subparsers.add_parser('step3', help=step3_help)
     step4_parser = subparsers.add_parser('step4', help=step4_help)
+    step4_parser = subparsers.add_parser('step5', help=step5_help)
 
     args, other = parser.parse_known_args()
     if args.command == 'setup':
@@ -686,6 +688,8 @@ def main():
         step3(cfg['general'], cfg['step2'], cfg['step3'])    
     elif args.command == 'step4':
         step4(cfg['general'], cfg['step4'])    
+    elif args.command == 'step5':
+        step4(cfg['general'], cfg['step2'], cfg['step5'])    
 
 if __name__ == '__main__':
     main()
