@@ -595,7 +595,6 @@ def step5(cfg, cfg2, cfg5):
 
     # Read neutron flux file and tag to a mesh
     if meshflux:
-      # Adjoint flux file is an hdf5 mesh file 
       fw_n_flux = meshflux
       fw_n_err = meshflux
       m = Mesh(structured=False, mesh=fw_n_flux, mats=None)
@@ -623,19 +622,17 @@ def step5(cfg, cfg2, cfg5):
     dg = discretize_geom(m)
     for t, dt in enumerate(decay_times): 
         temp = np.zeros(shape=(len(m), num_p_groups))
-        #print ("len m ", len(m))
         for i in range(len(m)):
-            #print ("i ", i)
             for row in np.atleast_1d(dg[dg["idx"] == i]):
                 cell = row[1]
                 if not cell_mats[cell] in mat_names:
                     continue
                 vol_frac = row[2]
                 mat = mat_names.index(cell_mats[cell])
-                #print("i, cell, mat ", i, cell, mat)
                 for h in range(num_p_groups):
                     for g in range(num_n_groups):
                         temp[i, h] += ((fw_n_flux[i, g]*fw_n_err[i, g])**2)*T[mat, t, g, h]*vol_frac
+                        #print("i, h, g, nflux, rel err, T", i, h, g, fw_n_flux[i, g], fw_n_err[i, g], T[mat, t, g, h])
         # Tag the mesh with the squared error in the photon source values
         #tag_name = "sq_err_q_src_{0}".format(dt)
         tag_name = "sq_err_p_src"
@@ -669,7 +666,7 @@ def main():
     step2_parser = subparsers.add_parser('step2', help=step2_help)
     step3_parser = subparsers.add_parser('step3', help=step3_help)
     step4_parser = subparsers.add_parser('step4', help=step4_help)
-    step4_parser = subparsers.add_parser('step5', help=step5_help)
+    step_parser = subparsers.add_parser('step5', help=step5_help)
 
     args, other = parser.parse_known_args()
     if args.command == 'setup':
@@ -689,7 +686,7 @@ def main():
     elif args.command == 'step4':
         step4(cfg['general'], cfg['step4'])    
     elif args.command == 'step5':
-        step4(cfg['general'], cfg['step2'], cfg['step5'])    
+        step5(cfg['general'], cfg['step2'], cfg['step5'])    
 
 if __name__ == '__main__':
     main()
