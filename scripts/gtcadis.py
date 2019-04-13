@@ -622,6 +622,7 @@ def step5(cfg, cfg2, cfg5):
     dg = discretize_geom(m)
     for t, dt in enumerate(decay_times): 
         temp = np.zeros(shape=(len(m), num_p_groups))
+        p_src_temp = np.zeros(shape=(len(m), num_p_groups))
         for i in range(len(m)):
             for row in np.atleast_1d(dg[dg["idx"] == i]):
                 cell = row[1]
@@ -631,13 +632,18 @@ def step5(cfg, cfg2, cfg5):
                 mat = mat_names.index(cell_mats[cell])
                 for h in range(num_p_groups):
                     for g in range(num_n_groups):
-                        temp[i, h] += ((fw_n_flux[i, g]*fw_n_err[i, g])**2)*T[mat, t, g, h]*vol_frac
+                        #temp[i, h] += ((fw_n_flux[i, g]*fw_n_err[i, g])**2)*T[mat, t, g, h]*vol_frac
+                        temp[i, h] += (fw_n_flux[i, g]*fw_n_err[i, g]*T[mat, t, g, h]*vol_frac)**2
+                        p_src_temp[i, h] += fw_n_flux[i, g]*T[mat, t, g, h]*vol_frac
                         #print("i, h, g, nflux, rel err, T", i, h, g, fw_n_flux[i, g], fw_n_err[i, g], T[mat, t, g, h])
         # Tag the mesh with the squared error in the photon source values
         #tag_name = "sq_err_q_src_{0}".format(dt)
         tag_name = "sq_err_p_src"
+        p_src_tag_name = "est_p_src"
         m.err_q_src = NativeMeshTag(num_p_groups, name=tag_name)
+        m.p_src = NativeMeshTag(num_p_groups, name=p_src_tag_name)
         m.err_q_src[:] = temp
+        m.p_src[:] = p_src_temp
     
     # Save adjoint neutron source mesh file tagged with values for all decay times   
     m.write_hdf5("sq_err_p_src.h5m")
